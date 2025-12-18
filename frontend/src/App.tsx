@@ -21,6 +21,7 @@ export default function App() {
     initial_search_query_count: number;
     max_research_loops: number;
     reasoning_model: string;
+    is_research_mode: boolean;
   }>({
     apiUrl: import.meta.env.DEV
       ? "http://localhost:2024"
@@ -100,30 +101,20 @@ export default function App() {
   }, [thread.messages, thread.isLoading, processedEventsTimeline]);
 
   const handleSubmit = useCallback(
-    (submittedInputValue: string, effort: string, model: string) => {
+    (submittedInputValue: string, model: string, isResearchMode: boolean = false) => {
       if (!submittedInputValue.trim()) return;
       setProcessedEventsTimeline([]);
       hasFinalizeEventOccurredRef.current = false;
 
-      // convert effort to, initial_search_query_count and max_research_loops
-      // low means max 1 loop and 1 query
-      // medium means max 3 loops and 3 queries
-      // high means max 10 loops and 5 queries
+      // For normal chat, no search queries or loops
+      // For research mode, use default research parameters
       let initial_search_query_count = 0;
       let max_research_loops = 0;
-      switch (effort) {
-        case "low":
-          initial_search_query_count = 1;
-          max_research_loops = 1;
-          break;
-        case "medium":
-          initial_search_query_count = 3;
-          max_research_loops = 3;
-          break;
-        case "high":
-          initial_search_query_count = 5;
-          max_research_loops = 10;
-          break;
+
+      if (isResearchMode) {
+        // For research mode, use reasonable defaults
+        initial_search_query_count = 3;
+        max_research_loops = 3;
       }
 
       const newMessages: Message[] = [
@@ -139,6 +130,7 @@ export default function App() {
         initial_search_query_count: initial_search_query_count,
         max_research_loops: max_research_loops,
         reasoning_model: model,
+        is_research_mode: isResearchMode,
       });
     },
     [thread]
@@ -150,7 +142,7 @@ export default function App() {
   }, [thread]);
 
   return (
-    <div className="flex h-screen bg-neutral-800 text-neutral-100 font-sans antialiased">
+    <div className="flex h-screen bg-background text-foreground font-sans antialiased">
       <main className="h-full w-full max-w-4xl mx-auto">
           {thread.messages.length === 0 ? (
             <WelcomeScreen

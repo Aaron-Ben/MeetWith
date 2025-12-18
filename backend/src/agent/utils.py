@@ -57,16 +57,19 @@ def insert_citation_markers(text, citations_list):
         text (str): The original text string.
         citations_list (list): A list of dictionaries, where each dictionary
                                contains 'start_index', 'end_index', and
-                               'segment_string' (the marker to insert).
+                               'segments' (the marker to insert).
                                Indices are assumed to be for the original text.
 
     Returns:
         str: The text with citation markers inserted.
     """
+    if not citations_list:
+        return text
+        
     # Sort citations by end_index in descending order.
     # If end_index is the same, secondary sort by start_index descending.
-    # This ensures that insertions at the end of the string don't affect
-    # the indices of earlier parts of the string that still need to be processed.
+    # This ensures that insertions at the end of string don't affect
+    # indices of earlier parts of string that still need to be processed.
     sorted_citations = sorted(
         citations_list, key=lambda c: (c["end_index"], c["start_index"]), reverse=True
     )
@@ -75,11 +78,14 @@ def insert_citation_markers(text, citations_list):
     for citation_info in sorted_citations:
         # These indices refer to positions in the *original* text,
         # but since we iterate from the end, they remain valid for insertion
-        # relative to the parts of the string already processed.
+        # relative to parts of string already processed.
         end_idx = citation_info["end_index"]
+        
+        # Build citation marker with proper Markdown link format
         marker_to_insert = ""
         for segment in citation_info["segments"]:
-            marker_to_insert += f" [{segment['label']}]({segment['short_url']})"
+            marker_to_insert += f"[{segment['label']}]({segment['short_url']})"
+        
         # Insert the citation marker at the original end_idx position
         modified_text = (
             modified_text[:end_idx] + marker_to_insert + modified_text[end_idx:]
