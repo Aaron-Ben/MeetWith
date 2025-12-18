@@ -124,31 +124,71 @@ def web_research(state: WebSearchState, config: RunnableConfig) -> OverallState:
         research_topic=state["search_query"],
     )
 
-    # Use Tavily search instead of Google GenAI
+    # Use Tavily search
     response = tavily_search.invoke(formatted_prompt)
     
-    # ========== 关键修改1：适配 Tavily 返回的字典格式 ==========
-    # Tavily 返回的是字典，用 [] 访问而非 . 属性
-    # 检查 response 结构，兼容不同版本的返回格式
-    candidates = response.get("candidates", [])
-    if not candidates:
-        # 若没有 candidates，直接返回空结果
+    # ========== 修复：适配 Tavily 返回的字典格式 ==========
+    # 确保response是字典格式
+    if isinstance(response, str):
+        # 如果意外返回字符串，尝试解析为字典
+        try:
+            import json
+            response = json.loads(response)
+        except:
+            # 如果解析失败，返回空结果
+            return {
+                "sources_gathered": [],
+                "search_query": [state["search_query"]],
+                "web_research_result": ["Failed to parse search results."],
+            }
+    
+    # Tavily 返回的是字典，包含 'results' 数组
+    results = response.get("results", [])
+    if not results:
+        # 若没有结果，直接返回空结果
         return {
             "sources_gathered": [],
             "search_query": [state["search_query"]],
             "web_research_result": ["No search results found."],
         }
     
-    # 从字典中获取 grounding_chunks（替代原对象访问方式）
-    grounding_chunks = candidates[0].get("grounding_metadata", {}).get("grounding_chunks", [])
+    # 创建一个类似 grounding_chunks 的结构
+    grounding_chunks = []
+    for idx, result in enumerate(results):
+        grounding_chunks.append({
+            'web': {
+                'uri': result.get('url', ''),
+                'title': result.get('title', '')
+            }
+        })
+    
     # resolve the urls to short urls for saving tokens and time
     resolved_urls = resolve_urls(grounding_chunks, state["id"])
     
-    # ========== 关键修改2：适配 response 的字典格式 ==========
-    # 获取 text 字段（字典键访问）
-    response_text = response.get("text", "")
-    # Gets the citations and adds them to the generated text
-    citations = get_citations(response, resolved_urls)
+    # ========== 修复：获取搜索结果文本 ==========
+    # 从 Tavily 结果中提取内容
+    response_text = ""
+    for result in results:
+        if result.get('content'):
+            response_text += f"Source: {result.get('title', 'Unknown')}\n{result.get('content', '')}\n\n"
+    
+    # 创建引用信息
+    citations = []
+    for idx, result in enumerate(results):
+        if result.get('content'):
+            # 创建一个简单的引用结构
+            resolved_url = resolved_urls.get(result.get('url', ''), f"https://tavily.com/id/{state["id"]}-{idx}")
+            citations.append({
+                "start_index": 0,
+                "end_index": len(response_text),
+                "segments": [{
+                    "label": result.get('title', 'Source').split('.')[0],
+                    "short_url": resolved_url,
+                    "value": result.get('url', '')
+                }]
+            })
+    
+    # 插入引用标记
     modified_text = insert_citation_markers(response_text, citations)
     sources_gathered = [item for citation in citations for item in citation["segments"]]
 
