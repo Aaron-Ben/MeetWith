@@ -6,7 +6,7 @@ import json
 from typing import Optional, List, Dict, Any
 from openai import OpenAI
 
-from app.config import Config
+from backend.app.config import Config
 
 class LLMClient:
     """
