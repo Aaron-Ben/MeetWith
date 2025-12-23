@@ -3,10 +3,10 @@
 """
 
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Iterator
 from openai import OpenAI
 
-from backend.app.config import Config
+from app.config import Config
 
 class LLMClient:
     """
@@ -62,6 +62,27 @@ class LLMClient:
         
         response = self.client.chat.completions.create(**kwargs)
         return response.choices[0].message.content
+
+    def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> Iterator[str]:
+        """流式发送聊天请求，逐步返回模型输出"""
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+
+        response = self.client.chat.completions.create(**kwargs)
+        for chunk in response:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
 
     def chat_json(
         self,

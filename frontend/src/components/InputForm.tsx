@@ -1,17 +1,10 @@
 import { useState, useLayoutEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { SquarePen, Send, StopCircle, Zap, Cpu, Search } from "lucide-react";
+import { SquarePen, Send, StopCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 interface InputFormProps {
-  onSubmit: (inputValue: string, model: string, isResearchMode?: boolean) => void;
+  onSubmit: (inputValue: string, model: string) => void;
   onCancel: () => void;
   isLoading: boolean;
   hasHistory: boolean;
@@ -24,8 +17,6 @@ export const InputForm: React.FC<InputFormProps> = ({
   hasHistory,
 }) => {
   const [internalInputValue, setInternalInputValue] = useState("");
-  const [model, setModel] = useState("deepseek-chat");
-  const [isResearchMode, setIsResearchMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
@@ -40,52 +31,36 @@ export const InputForm: React.FC<InputFormProps> = ({
     const contentHeight = textarea.scrollHeight;
     const newHeight = Math.min(contentHeight, maxHeight);
     textarea.style.height = `${newHeight}px`;
-    
   }, [internalInputValue]);
 
-  // Reset research mode when loading is complete
-  useLayoutEffect(() => {
-    if (!isLoading) {
-      setIsResearchMode(false);
-    }
-  }, [isLoading]);
-
-  const handleInternalSubmit = (e?: React.FormEvent, isResearchMode: boolean = false) => {
+  const handleInternalSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!internalInputValue.trim()) return;
-    setIsResearchMode(isResearchMode);
-    onSubmit(internalInputValue, model, isResearchMode);
+    onSubmit(internalInputValue, "deepseek-chat");
     setInternalInputValue("");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      handleInternalSubmit(undefined, false);
+      handleInternalSubmit(undefined);
     }
   };
 
   const isSubmitDisabled = !internalInputValue.trim() || isLoading;
-  const isResearchButtonDisabled = isLoading;
-
-  // Toggle research mode
-  const toggleResearchMode = () => {
-    setIsResearchMode(!isResearchMode);
-  };
 
   return (
     <form
-      onSubmit={(e) => handleInternalSubmit(e, isResearchMode)}
+      onSubmit={handleInternalSubmit}
       className="flex flex-col gap-3 p-4 pb-6"
     >
-      {/* 输入框容器（适配白色背景） */}
       <div className="relative rounded-2xl bg-white border border-neutral-300 shadow-sm hover:border-neutral-400 transition-all duration-200 overflow-hidden">
         <Textarea
           ref={textareaRef}
           value={internalInputValue}
           onChange={(e) => setInternalInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="发消息或输入/选择技能"
+          placeholder="输入消息..."
           className="w-full text-neutral-900 placeholder:text-neutral-400 resize-none border-0 bg-transparent 
                     focus:outline-none focus:ring-0 outline-none focus-visible:ring-0 shadow-none
                     text-base px-4 py-3 pr-12 overflow-y-auto"
@@ -99,7 +74,6 @@ export const InputForm: React.FC<InputFormProps> = ({
           }}
         />
         
-        {/* 发送/取消按钮（浅色背景适配） */}
         <div className="absolute right-2 bottom-2">
           {isLoading ? (
             <Button
@@ -129,47 +103,7 @@ export const InputForm: React.FC<InputFormProps> = ({
         </div>
       </div>
 
-      {/* 底部控制栏（浅色背景适配） */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-white border border-neutral-300 rounded-xl px-3 py-1.5 text-sm text-neutral-800 hover:border-neutral-400 transition-all">
-            <Cpu className="h-4 w-4 mr-2 text-neutral-600" />
-            <Select value={model} onValueChange={setModel}>
-              <SelectTrigger className="w-[200px] bg-transparent border-none text-sm cursor-pointer h-7">
-                <SelectValue placeholder="Model" className="text-neutral-800" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border border-neutral-300 text-neutral-800">
-                <SelectItem
-                  value="deepseek-chat"
-                  className="hover:bg-neutral-100 focus:bg-neutral-100 cursor-pointer py-1.5"
-                >
-                  <div className="flex items-center">
-                    <Zap className="h-4 w-4 mr-2 text-blue-600" />
-                    DeepSeek
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          {/* 深度研究按钮 */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={`rounded-xl px-3 py-1.5 text-sm transition-all ${
-              isResearchMode
-                ? "bg-blue-500 border-blue-500 text-white hover:bg-blue-600"
-                : "bg-white border border-neutral-300 text-neutral-800 hover:bg-neutral-50 hover:border-neutral-400"
-            }`}
-            onClick={toggleResearchMode}
-            disabled={isResearchButtonDisabled}
-          >
-            <Search size={14} className="mr-1.5" />
-            深度研究
-          </Button>
-        </div>
-
+      <div className="flex items-center justify-end">
         {hasHistory && (
           <Button
             variant="default"

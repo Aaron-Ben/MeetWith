@@ -1,7 +1,7 @@
 import { InputForm } from './InputForm';
 
 interface WelcomeScreenProps {
-  handleSubmit: (inputValue: string, model: string, isResearchMode?: boolean) => void;
+  handleSubmit: (inputValue: string, model: string) => void;
   onCancel: () => void;
   isLoading: boolean;
 }

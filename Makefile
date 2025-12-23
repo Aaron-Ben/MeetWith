@@ -13,7 +13,7 @@ dev-frontend:
 
 dev-backend:
 	@echo "Starting backend development server..."
-	@cd backend && PYTHONPATH=src ../venv/bin/python -m uvicorn src.agent.app:app --reload --host 0.0.0.0 --port 8000
+	@cd backend && ../venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 dev-langgraph:
 	@echo "Starting LangGraph API server..."
@@ -22,4 +22,4 @@ dev-langgraph:
 # Run frontend, backend, and langgraph concurrently
 dev:
 	@echo "Starting all development servers..."
-	@make dev-frontend & make dev-backend & make dev-langgraph
+	@make dev-frontend & make dev-backend
