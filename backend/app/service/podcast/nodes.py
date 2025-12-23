@@ -1,12 +1,13 @@
-
-
+import os
+import asyncio
+from pathlib import Path
 from typing import Dict, List
-
 from loguru import logger
-from backend.app.service.podcast.core import Dialogue, Outline, Segment
+from backend.app.service.podcast.core import Dialogue, Outline, Segment, combine_audio_files
 from backend.app.service.podcast.speaker import SpeakerProfile
 from backend.app.service.podcast.state import PodcastState
 from backend.app.utils.llm_client import LLMClient
+from backend.app.utils.tts_client import MiniMaxTTSClient
 
 
 def generate_outline_node(state: PodcastState) -> Dict:
@@ -264,3 +265,143 @@ def generate_transcript_node(state: PodcastState) -> Dict:
     logger.info(f"Generated transcript with {len(all_dialogues)} dialogue segments in total")
 
     return {"transcript": all_dialogues}
+
+
+async def generate_all_audio_node(state: PodcastState) -> Dict:
+    """
+    使用自定义 LLMClient，根据已有对话 transcript 生成完整音频。
+
+    输入：
+        state["transcript"]       必须已存在
+        state["briefing"]        播客需求说明
+        state["speaker_profile"] 说话人配置（必须存在，至少一个 speaker）
+
+    输出：
+        返回 {"audio_file": str}，由调用方写回 state["audio_file"]。
+    """
+    transcript = state["transcript"]
+    output_dir = state["output_dir"]
+    total_segments = len(transcript)
+
+    # Get batch size from environment variable, default to 5
+    batch_size = int(os.getenv("TTS_BATCH_SIZE", "5"))
+    logger.info(f"Using TTS batch size: {batch_size}")
+
+    assert state.get("speaker_profile") is not None, "speaker_profile must be provided"
+
+    # Get TTS configuration from speaker profile
+    speaker_profile = state["speaker_profile"]
+    assert speaker_profile is not None, "speaker_profile must be provided"
+    tts_provider = speaker_profile.tts_provider
+    tts_model = speaker_profile.tts_model
+    voices = speaker_profile.get_voice_mapping()
+
+    logger.info(
+        f"Generating {total_segments} audio clips in sequential batches of {batch_size}, "
+        f"provider={tts_provider}, model={tts_model}"
+    )
+
+    all_clip_paths: List[Path] = []
+
+    # Process in sequential batches
+    for batch_start in range(0, total_segments, batch_size):
+        batch_end = min(batch_start + batch_size, total_segments)
+        batch_number = batch_start // batch_size + 1
+        total_batches = (total_segments + batch_size - 1) // batch_size
+
+        logger.info(
+            f"Processing batch {batch_number}/{total_batches} (clips {batch_start}-{batch_end - 1})"
+        )
+
+        # Create tasks for this batch
+        batch_tasks = []
+        for i in range(batch_start, batch_end):
+            dialogue_info = {
+                "dialogue": transcript[i],
+                "index": i,
+                "output_dir": output_dir,
+                "tts_provider": tts_provider,
+                "tts_model": tts_model,
+                "voices": voices,
+            }
+            task = generate_single_audio_clip(dialogue_info)
+            batch_tasks.append(task)
+
+        # Process this batch concurrently (but wait before next batch)
+        batch_clip_paths = await asyncio.gather(*batch_tasks)
+        all_clip_paths.extend(batch_clip_paths)
+
+        logger.info(f"Completed batch {batch_number}/{total_batches}")
+
+        # Small delay between batches to be extra safe with API limits
+        if batch_end < total_segments:
+            await asyncio.sleep(1)
+
+    logger.info(f"Generated all {len(all_clip_paths)} audio clips")
+
+    return {"audio_clips": all_clip_paths}
+
+
+async def generate_single_audio_clip(dialogue_info: Dict) -> Path:
+    """
+    使用 MiniMaxTTSClient 为单条对话生成一段音频。
+    当前仅支持 tts_provider == 'minimax'，否则抛错或后续扩展。
+    """
+    dialogue = dialogue_info["dialogue"]
+    index = dialogue_info["index"]
+    output_dir = dialogue_info["output_dir"]
+    tts_provider = dialogue_info["tts_provider"]
+    tts_model_name = dialogue_info["tts_model"]
+    voices = dialogue_info["voices"]
+
+    if tts_provider.lower() not in ("minimax", "minimax_tts"):
+        raise ValueError(
+            f"当前 generate_single_audio_clip 仅支持 MiniMax TTS，"
+            f"但收到 tts_provider='{tts_provider}'"
+        )
+
+    logger.info(f"Generating audio clip {index:04d} for {dialogue.speaker}")
+
+    # Create clips directory
+    clips_dir = output_dir / "clips"
+    clips_dir.mkdir(exist_ok=True, parents=True)
+
+    # Generate filename
+    filename = f"{index:04d}.mp3"
+    clip_path = clips_dir / filename
+
+    # Create TTS model
+    voice_id = voices.get(dialogue.speaker)
+    if not voice_id:
+        raise ValueError(f"No voice ID found for speaker '{dialogue.speaker}'")
+
+    client = MiniMaxTTSClient(model=tts_model_name or None)
+
+    # Generate audio
+    await client.synthesize(
+        text=dialogue.dialogue, 
+        voice_id=voice_id, 
+        output_path=clip_path
+    )
+
+    logger.info(f"Generated audio clip: {clip_path}")
+
+    return clip_path
+
+
+async def combine_audio_node(state: PodcastState) -> Dict:
+    """Combine all audio clips into final podcast episode"""
+    logger.info("Starting audio combination")
+
+    clips_dir = state["output_dir"] / "clips"
+    audio_dir = state["output_dir"] / "audio"
+
+    # Combine audio files
+    result = await combine_audio_files(
+        clips_dir, f"{state['episode_name']}.mp3", audio_dir
+    )
+
+    final_path = Path(result["combined_audio_path"])
+    logger.info(f"Combined audio saved to: {final_path}")
+
+    return {"final_output_file_path": final_path}

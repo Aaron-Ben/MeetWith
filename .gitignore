@@ -13,3 +13,4 @@ frontend/package-lock.json
 frontend/pnpm-lock.yaml
 
 backend/.langgraph_api
+backend/input

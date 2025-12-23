@@ -1,5 +1,5 @@
 """
-llm 客户端封装
+对话方式的 llm 客户端封装
 """
 
 import json
