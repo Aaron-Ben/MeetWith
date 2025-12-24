@@ -18,8 +18,12 @@ class Outline(BaseModel):
     def model_dump(self, **kwargs):
         return {"segments": [segment.model_dump(**kwargs) for segment in self.segments]}
 
+# 对话的结构
 class Dialogue(BaseModel):
+    # 发言人
     speaker: str
+
+    # 内容
     dialogue: str
 
 class Transcript(BaseModel):

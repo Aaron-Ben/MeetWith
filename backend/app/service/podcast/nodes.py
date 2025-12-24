@@ -1,13 +1,15 @@
 import os
 import asyncio
+
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any, AsyncIterable, Dict
 from loguru import logger
 from backend.app.service.podcast.core import Dialogue, Outline, Segment, combine_audio_files
 from backend.app.service.podcast.speaker import SpeakerProfile
 from backend.app.service.podcast.state import PodcastState
 from backend.app.utils.llm_client import LLMClient
 from backend.app.utils.tts_client import MiniMaxTTSClient
+
 
 
 def generate_outline_node(state: PodcastState) -> Dict:
@@ -135,7 +137,7 @@ def generate_transcript_node(state: PodcastState) -> Dict:
         使用自定义 LLMClient，根据已有大纲 Outline 生成完整对话 transcript。
 
         输入：
-            state["outline"]          必须已存在
+            state["outline"]          必须已存在(生成的大纲)
             state["content"]          原始内容，用作上下文
             state["briefing"]         播客需求说明
             state["speaker_profile"]  说话人配置（必须存在，至少一个 speaker）
@@ -174,7 +176,7 @@ def generate_transcript_node(state: PodcastState) -> Dict:
         )
 
         user_prompt = f"""
-请为下面这个播客大纲中的一个段落，生成一段完整的多轮对话，并使用 JSON 格式输出。
+请为下面这个播客大纲中的每一个段落，生成一段完整的多轮对话，并使用 JSON 格式输出。
 
 [播客需求 Briefing]
 {briefing}
@@ -272,7 +274,7 @@ async def generate_all_audio_node(state: PodcastState) -> Dict:
     使用自定义 LLMClient，根据已有对话 transcript 生成完整音频。
 
     输入：
-        state["transcript"]       必须已存在
+        state["transcript"]       必须已存在（依据大纲生成的一系列对话）
         state["briefing"]        播客需求说明
         state["speaker_profile"] 说话人配置（必须存在，至少一个 speaker）
 
@@ -284,7 +286,7 @@ async def generate_all_audio_node(state: PodcastState) -> Dict:
     total_segments = len(transcript)
 
     # Get batch size from environment variable, default to 5
-    batch_size = int(os.getenv("TTS_BATCH_SIZE", "5"))
+    batch_size = int(os.getenv("TTS_BATCH_SIZE", "2"))
     logger.info(f"Using TTS batch size: {batch_size}")
 
     assert state.get("speaker_profile") is not None, "speaker_profile must be provided"
@@ -405,3 +407,95 @@ async def combine_audio_node(state: PodcastState) -> Dict:
     logger.info(f"Combined audio saved to: {final_path}")
 
     return {"final_output_file_path": final_path}
+
+async def generate_podcast(state: PodcastState) -> AsyncIterable[Dict[str, Any]]:
+    """
+    使用 nodes.py 中的 4 个节点按顺序生成完整播客，
+    并且在生成音频片段的过程中通过异步迭代“推送”新片段，
+    方便上层实现边生成边播放。
+
+    参数:
+        state: PodcastState，需预先填好
+            - content: 原始内容
+            - briefing: 播客需求说明
+            - num_segments: 期望段数
+            - output_dir: 输出目录 Path
+            - episode_name: 最终音频文件名（不含扩展名）
+            - speaker_profile: 说话人和 TTS 配置
+    产出事件（async for 迭代）:
+        - {"event": "outline_generated", "outline": Outline}
+        - {"event": "transcript_generated", "transcript": list[Dialogue]}
+        - {"event": "audio_clip_generated", "index": int, "path": Path}
+        - {"event": "final_audio_ready", "final_output_file_path": Path}
+    """
+
+    from backend.app.service.podcast.nodes import (
+        generate_outline_node,
+        generate_transcript_node,
+        generate_all_audio_node,
+        combine_audio_node,
+    )
+
+    logger.info("Starting full podcast generation pipeline")
+
+    # 1. 生成大纲
+    outline_result = generate_outline_node(state)
+    state.update(outline_result)
+    logger.info("Outline generated")
+    yield {"event": "outline_generated", "outline": state["outline"]}
+
+    # 2. 生成逐句对话
+    transcript_result = generate_transcript_node(state)
+    state.update(transcript_result)
+    logger.info("Transcript generated")
+    yield {"event": "transcript_generated", "transcript": state["transcript"]}
+
+    # 3. 异步生成所有音频，同时轮询 clips 目录，发现新片段就立即 yield
+    output_dir: Path = state["output_dir"]
+    clips_dir = output_dir / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+
+    # 后台启动 TTS 批量生成任务
+    audio_task = asyncio.create_task(generate_all_audio_node(state))
+
+    known_files: set[Path] = set()
+    clip_index = 0
+
+    while True:
+        # 当前已经生成的所有 mp3 片段
+        current_files = set(clips_dir.glob("*.mp3"))
+        # 找出新产生的片段
+        new_files = sorted(current_files - known_files)
+
+        for path in new_files:
+            known_files.add(path)
+            clip_index += 1
+            logger.info(f"Detected new audio clip for streaming: {path}")
+            # 把新片段的信息抛给上层，方便边生成边播放
+            yield {
+                "event": "audio_clip_generated",
+                "index": clip_index,
+                "path": path,
+            }
+
+        # 如果 TTS 任务已完成，则同步一次返回值后跳出循环
+        if audio_task.done():
+            audio_result = await audio_task  # {"audio_clips": List[Path]}
+            state.update(audio_result)
+            break
+
+        # 没完成就睡一会儿，继续轮询
+        await asyncio.sleep(0.5)
+
+    logger.info("All audio clips generated")
+
+    # 4. 合并所有片段为最终的播客音频
+    final_result = await combine_audio_node(state)
+    state.update(final_result)
+    logger.info(f"Final podcast audio ready at: {state['final_output_file_path']}")
+
+    yield {
+        "event": "final_audio_ready",
+        "final_output_file_path": state["final_output_file_path"],
+    }
+

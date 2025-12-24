@@ -12,5 +12,5 @@ __pycache__
 frontend/package-lock.json
 frontend/pnpm-lock.yaml
 
-backend/.langgraph_api
-backend/input
+input
+output
