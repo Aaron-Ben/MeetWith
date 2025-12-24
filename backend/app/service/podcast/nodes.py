@@ -4,11 +4,11 @@ import asyncio
 from pathlib import Path
 from typing import Dict, List, Any, AsyncIterable, Dict
 from loguru import logger
-from backend.app.service.podcast.core import Dialogue, Outline, Segment, combine_audio_files
-from backend.app.service.podcast.speaker import SpeakerProfile
-from backend.app.service.podcast.state import PodcastState
-from backend.app.utils.llm_client import LLMClient
-from backend.app.utils.tts_client import MiniMaxTTSClient
+from app.service.podcast.core import Dialogue, Outline, Segment, combine_audio_files
+from app.service.podcast.speaker import SpeakerProfile
+from app.service.podcast.state import PodcastState
+from app.utils.llm_client import LLMClient
+from app.utils.tts_client import MiniMaxTTSClient
 
 
 
@@ -429,7 +429,7 @@ async def generate_podcast(state: PodcastState) -> AsyncIterable[Dict[str, Any]]
         - {"event": "final_audio_ready", "final_output_file_path": Path}
     """
 
-    from backend.app.service.podcast.nodes import (
+    from app.service.podcast.nodes import (
         generate_outline_node,
         generate_transcript_node,
         generate_all_audio_node,

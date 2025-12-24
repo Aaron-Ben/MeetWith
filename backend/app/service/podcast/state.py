@@ -2,8 +2,8 @@ from operator import add
 from pathlib import Path
 from typing import Annotated, List, Optional, TypedDict
 
-from backend.app.service.podcast.core import Dialogue, Outline
-from backend.app.service.podcast.speaker import SpeakerProfile
+from app.service.podcast.core import Dialogue, Outline
+from app.service.podcast.speaker import SpeakerProfile
 
 
 

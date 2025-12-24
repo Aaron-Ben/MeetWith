@@ -4,9 +4,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from backend.app.service.podcast.state import PodcastState
-from backend.app.service.podcast.speaker import SpeakerProfile, Speaker
-from backend.app.service.podcast.nodes import (
+from app.service.podcast.state import PodcastState
+from app.service.podcast.speaker import SpeakerProfile, Speaker
+from app.service.podcast.nodes import (
     generate_outline_node,
     generate_transcript_node,
 )

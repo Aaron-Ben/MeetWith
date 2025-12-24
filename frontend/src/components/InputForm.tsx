@@ -8,6 +8,7 @@ interface InputFormProps {
   onCancel: () => void;
   isLoading: boolean;
   hasHistory: boolean;
+  onOpenPodcast: () => void;
 }
 
 export const InputForm: React.FC<InputFormProps> = ({
@@ -15,6 +16,7 @@ export const InputForm: React.FC<InputFormProps> = ({
   onCancel,
   isLoading,
   hasHistory,
+  onOpenPodcast,
 }) => {
   const [internalInputValue, setInternalInputValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -103,7 +105,17 @@ export const InputForm: React.FC<InputFormProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="rounded-xl px-3 py-1.5 text-sm border-neutral-300 text-neutral-700 bg-white hover:bg-neutral-50 hover:border-neutral-400"
+          onClick={onOpenPodcast}
+        >
+          AI 播客
+        </Button>
+        
         {hasHistory && (
           <Button
             variant="default"

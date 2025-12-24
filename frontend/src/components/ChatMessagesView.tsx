@@ -1,7 +1,9 @@
 import type React from "react";
+import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2 } from "lucide-react";
+import { Loader2, Copy, Check } from "lucide-react";
 import { InputForm } from "@/components/InputForm";
+import { Button } from "@/components/ui/button";
 
 export type ChatMessage = {
   id: string;
@@ -15,6 +17,7 @@ interface ChatMessagesViewProps {
   scrollAreaRef: React.RefObject<HTMLDivElement | null>;
   onSubmit: (inputValue: string, model: string) => void;
   onCancel: () => void;
+  onOpenPodcast: () => void;
 }
 
 export function ChatMessagesView({
@@ -23,7 +26,20 @@ export function ChatMessagesView({
   scrollAreaRef,
   onSubmit,
   onCancel,
+  onOpenPodcast,
 }: ChatMessagesViewProps) {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopy = async (content: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <ScrollArea className="flex-1 overflow-y-auto" ref={scrollAreaRef}>
@@ -36,7 +52,7 @@ export function ChatMessagesView({
               }`}
             >
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                className={`relative max-w-[80%] rounded-2xl px-4 py-3 group ${
                   message.type === "human"
                     ? "bg-blue-500 text-white rounded-br-none"
                     : "bg-white border border-neutral-300 text-neutral-900 rounded-bl-none"
@@ -45,6 +61,20 @@ export function ChatMessagesView({
                 <div className="whitespace-pre-wrap break-words">
                   {message.content}
                 </div>
+                {message.type === "ai" && message.content && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity bg-neutral-100 hover:bg-neutral-200"
+                    onClick={() => handleCopy(message.content, message.id)}
+                  >
+                    {copiedId === message.id ? (
+                      <Check className="h-3.5 w-3.5 text-green-600" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5 text-neutral-600" />
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -65,6 +95,7 @@ export function ChatMessagesView({
         isLoading={isLoading}
         onCancel={onCancel}
         hasHistory={messages.length > 0}
+        onOpenPodcast={onOpenPodcast}
       />
     </div>
   );

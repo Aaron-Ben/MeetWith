@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meetwith-app"
+version = "0.1.0"
+description = "MeetWith AI Application"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["app"]
+package-dir = {"" = "backend"}
