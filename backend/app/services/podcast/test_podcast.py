@@ -1,9 +1,9 @@
 from pathlib import Path
 import asyncio
 
-from app.service.podcast.nodes import generate_podcast
-from app.service.podcast.speaker import Speaker, SpeakerProfile
-from app.service.podcast.state import PodcastState
+from app.services.podcast.nodes import generate_podcast
+from app.services.podcast.speaker import Speaker, SpeakerProfile
+from app.services.podcast.state import PodcastState
 from asyncio.subprocess import DEVNULL
 import shutil
 

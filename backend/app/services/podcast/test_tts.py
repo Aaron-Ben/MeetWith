@@ -5,10 +5,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from loguru import logger
 
-from app.service.podcast.core import Dialogue
-from app.service.podcast.speaker import Speaker, SpeakerProfile
-from app.service.podcast.state import PodcastState
-from app.service.podcast.nodes import (
+from app.services.podcast.core import Dialogue
+from app.services.podcast.speaker import Speaker, SpeakerProfile
+from app.services.podcast.state import PodcastState
+from app.services.podcast.nodes import (
     generate_all_audio_node,
     combine_audio_node,
 )
