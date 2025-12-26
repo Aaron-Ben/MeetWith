@@ -8,18 +8,18 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import unquote
-import threading
 from typing import Optional, List, Dict, Any
 
+from app import config
+from app.models.database import SessionLocal, get_db
+from app.models.ppt.project import PPTProject
+from app.models.refernce_file import ReferenceFile
 from app.services.ppt.file_parser import FileParser
-from fastapi import APIRouter, UploadFile, File, Form, Body, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from models import ReferenceFile, Project
-from config import Config
-from database import get_db  # 假设存在数据库会话依赖
 
 logger = logging.getLogger(__name__)
 
@@ -47,58 +47,63 @@ def _get_file_type(filename: str) -> str:
     return 'unknown'
 
 # 异步解析文件
-def _parse_file_async(file_id: str, file_path: str, filename: str, app):
-    with app.app_context():  # FastAPI的app_context处理可能需要调整
+def _parse_file_async(file_id: str, file_path: str, filename: str, app) -> None:
+    """
+    后台任务运行的文件解析逻辑
+    """
+
+    db = SessionLocal()
+    try:
+        reference_file = db.query(ReferenceFile).get(file_id)
+        if not reference_file:
+            logger.error(f"Reference file {file_id} not found")
+            return
+
+        reference_file.parse_status = 'parsing'
+        db.commit()
+
+        parser = FileParser(
+            mineru_token=config['MINERU_TOKEN'],
+            mineru_api_base=config['MINERU_API_BASE'],
+            google_api_key=config['GOOGLE_API_KEY'],
+            google_api_base=config['GOOGLE_API_BASE'],
+            openai_api_key=config['OPENAI_API_KEY'],
+            openai_api_base=config['OPENAI_API_BASE'],
+            image_caption_model=config['IMAGE_CAPTION_MODEL'],
+            provider_format=config.get('AI_PROVIDER_FORMAT', 'gemini')
+        )
+
+        logger.info(f"Starting to parse file: {filename}")
+        batch_id, markdown_content, extract_id, error_message, failed_image_count = parser._parse_file(file_path, filename)
+
+        reference_file.mineru_batch_id = batch_id
+        if error_message:
+            reference_file.parse_status = 'failed'
+            reference_file.error_message = error_message
+            logger.error(f"File parsing failed: {error_message}")
+        else:
+            reference_file.parse_status = 'completed'
+            reference_file.markdown_content = markdown_content
+            if failed_image_count > 0:
+                logger.warning(f"File parsing completed: {filename}, but {failed_image_count} images failed")
+
+        reference_file.updated_at = datetime.utcnow()
+        db.commit()
+
+    except Exception as e:
+        logger.error(f"Error in async file parsing: {str(e)}", exc_info=True)
         try:
-            db = next(get_db())  # 获取数据库会话
+            db = SessionLocal()
             reference_file = db.query(ReferenceFile).get(file_id)
-            if not reference_file:
-                logger.error(f"Reference file {file_id} not found")
-                return
-
-            reference_file.parse_status = 'parsing'
-            db.commit()
-
-            parser = FileParser(
-                mineru_token=app.config['MINERU_TOKEN'],
-                mineru_api_base=app.config['MINERU_API_BASE'],
-                google_api_key=app.config.get('GOOGLE_API_KEY', ''),
-                google_api_base=app.config.get('GOOGLE_API_BASE', ''),
-                openai_api_key=app.config.get('OPENAI_API_KEY', ''),
-                openai_api_base=app.config.get('OPENAI_API_BASE', ''),
-                image_caption_model=app.config['IMAGE_CAPTION_MODEL'],
-                provider_format=app.config.get('AI_PROVIDER_FORMAT', 'gemini')
-            )
-
-            logger.info(f"Starting to parse file: {filename}")
-            batch_id, markdown_content, extract_id, error_message, failed_image_count = parser.parse_file(file_path, filename)
-
-            reference_file.mineru_batch_id = batch_id
-            if error_message:
+            if reference_file:
                 reference_file.parse_status = 'failed'
-                reference_file.error_message = error_message
-                logger.error(f"File parsing failed: {error_message}")
-            else:
-                reference_file.parse_status = 'completed'
-                reference_file.markdown_content = markdown_content
-                if failed_image_count > 0:
-                    logger.warning(f"File parsing completed: {filename}, but {failed_image_count} images failed")
-
-            reference_file.updated_at = datetime.utcnow()
-            db.commit()
-
-        except Exception as e:
-            logger.error(f"Error in async file parsing: {str(e)}", exc_info=True)
-            try:
-                db = next(get_db())
-                reference_file = db.query(ReferenceFile).get(file_id)
-                if reference_file:
-                    reference_file.parse_status = 'failed'
-                    reference_file.error_message = f"Parsing error: {str(e)}"
-                    reference_file.updated_at = datetime.utcnow()
-                    db.commit()
-            except Exception as db_error:
-                logger.error(f"Failed to update error status: {str(db_error)}")
+                reference_file.error_message = f"Parsing error: {str(e)}"
+                reference_file.updated_at = datetime.utcnow()
+                db.commit()
+        except Exception as db_error:
+            logger.error(f"Failed to update error status: {str(db_error)}")
+    finally:
+        db.close()
 
 
 @reference_file_router.post("/upload", response_class=JSONResponse)
@@ -137,7 +142,7 @@ def upload_reference_file(
         if project_id in ['none', '']:
             project_id = None
         else:
-            if project_id and not db.query(Project).get(project_id):
+            if project_id and not db.query(PPTProject).get(project_id):
                 raise HTTPException(status_code=404, detail="Project not found")
 
         # 处理文件名
@@ -228,7 +233,7 @@ def list_project_reference_files(project_id: str, db: Session = Depends(get_db))
         elif project_id in ['global', 'none']:
             reference_files = db.query(ReferenceFile).filter_by(project_id=None).all()
         else:
-            if not db.query(Project).get(project_id):
+            if not db.query(PPTProject).get(project_id):
                 raise HTTPException(status_code=404, detail="Project not found")
             reference_files = db.query(ReferenceFile).filter_by(project_id=project_id).all()
 
@@ -302,7 +307,7 @@ def associate_file_to_project(
     if not reference_file:
         raise HTTPException(status_code=404, detail="Reference file not found")
 
-    project = db.query(Project).get(data.project_id)
+    project = db.query(PPTProject).get(data.project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 

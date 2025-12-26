@@ -4,33 +4,101 @@ Reference File model - stores uploaded reference files and their parsed content
 import uuid
 import re
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
+from app.models.database import Base
+from sqlalchemy import String, Integer, Text, DateTime, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-Base = declarative_base()
 
 class ReferenceFile(Base):
     """
     Reference File model - represents an uploaded reference file
     """
     __tablename__ = 'reference_files'
-    
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    project_id = Column(String(36), ForeignKey('projects.id'), nullable=True)  # Can be null for global files
-    filename = Column(String(500), nullable=False)
-    file_path = Column(String(500), nullable=False)  # Path relative to upload folder
-    file_size = Column(Integer, nullable=False)  # File size in bytes
-    file_type = Column(String(50), nullable=False)  # pdf, docx, pptx, etc.
-    parse_status = Column(String(50), nullable=False, default='pending')  # pending|parsing|completed|failed
-    markdown_content = Column(Text, nullable=True)  # Parsed markdown with enhanced image descriptions
-    error_message = Column(Text, nullable=True)  # Error message if parsing failed
-    mineru_batch_id = Column(String(100), nullable=True)  # Mineru service batch ID
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
 
-    project = relationship('Project', back_populates='reference_files', foreign_keys=[project_id])
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        comment='Reference file ID (UUID)'
+    )
+
+    project_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey('projects.id'),
+        nullable=True,
+        comment='Project ID (UUID) this file belongs to, can be null for global files'
+    )
+
+    filename: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+        comment='Original filename'
+    )
+
+    file_path: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+        comment='File path relative to upload folder'
+    )
+
+    file_size: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment='File size in bytes'
+    )
+
+    file_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment='File type, e.g. pdf, docx, pptx'
+    )
+
+    parse_status: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default='pending',
+        comment='Parsing status: pending|parsing|completed|failed'
+    )
+
+    markdown_content: Mapped[str] = mapped_column(
+        Text,
+        nullable=True,
+        comment='Parsed markdown content with enhanced image descriptions'
+    )
+
+    error_message: Mapped[str] = mapped_column(
+        Text,
+        nullable=True,
+        comment='Error message if parsing failed'
+    )
+
+    mineru_batch_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=True,
+        comment='Mineru service batch ID'
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        comment='Creation time'
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        comment='Last update time'
+    )
+
+    """
+    Relationships
+    """
+
+    project: Mapped['Project'] = relationship('Project', back_populates='reference_files', foreign_keys=[project_id])
+
     
     def to_dict(self, include_content=True, include_failed_count=False):
         """

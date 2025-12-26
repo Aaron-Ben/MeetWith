@@ -1,41 +1,94 @@
 """
-ppt的某一页
+ppt的页面模型
 """
 import uuid
 import json
 from datetime import datetime
 
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
+from app.models.database import Base
+from sqlalchemy import String, Integer, Text, DateTime, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.__init__ import Base
 
 
 class Page(Base):
-    """
-    Page model - represents a single PPT page/slide
-    """
+
     __tablename__ = 'pages'
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    project_id = Column(String(36), ForeignKey('projects.id'), nullable=False)
-    order_index = Column(Integer, nullable=False)
-    part = Column(String(200), nullable=True)  # Optional section name
-    outline_content = Column(Text, nullable=True)  # JSON string
-    description_content = Column(Text, nullable=True)  # JSON string
-    generated_image_path = Column(String(500), nullable=True)
-    status = Column(String(50), nullable=False, default='DRAFT')
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id : Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        comment='页面ID（UUID）'
+    )
 
-    # Relationships
-    project = relationship('Project', back_populates='pages')
-    image_versions = relationship(
-        'PageImageVersion',
-        back_populates='page',
-        lazy='dynamic',
-        cascade='all, delete-orphan',
-        order_by='PageImageVersion.version_number.desc()',
+    project_id : Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey('projects.id'),
+        nullable=False,
+        comment='所属项目ID（UUID）'
+    )
+
+    order_index : Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment='页面顺序索引'
+    )
+
+    part : Mapped[str] = mapped_column(
+        String(200),
+        nullable=True,
+        comment='页面部分名称'
+    )
+
+    content : Mapped[str] = mapped_column(
+        Text,
+        nullable=True,
+        comment='页面内容'
+    )
+
+    outline_content : Mapped[str] = mapped_column(
+        Text,
+        nullable=True,
+        comment='页面大纲内容'
+    )
+
+    description_content : Mapped[str] = mapped_column(
+        Text,
+        nullable=True,
+        comment='页面描述内容'
+    )
+
+    generated_image_path : Mapped[str] = mapped_column(
+        String(500),
+        nullable=True,
+        comment='生成的图片路径'
+    )
+    
+    status : Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default='DRAFT',
+        comment='页面状态'
+    )
+    created_at : Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        comment='创建时间'
+    )
+    updated_at : Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        comment='更新时间'
+    )
+
+    project: Mapped['Project'] = mapped_column(
+        ForeignKey('projects.id'),
+        nullable=False,
+        comment='所属项目ID（UUID）'
     )
 
     def get_outline_content(self):
@@ -70,7 +123,7 @@ class Page(Base):
         else:
             self.description_content = None
 
-    def to_dict(self, include_versions=False):
+    def to_dict(self):
         """Convert to dictionary"""
         data = {
             'page_id': self.id,
@@ -85,9 +138,6 @@ class Page(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
-
-        if include_versions:
-            data['image_versions'] = [v.to_dict() for v in self.image_versions.all()]
 
         return data
 
