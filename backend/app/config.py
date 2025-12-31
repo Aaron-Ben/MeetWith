@@ -22,6 +22,7 @@ class Config:
 
     MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY")
     MINIMAX_BASE_URL = "https://api.minimax.ai/v1"
+    MINIMAX_TTS_MODEL = "speech-2.6-hd"
 
     # ==================== 数据库配置 ====================
     SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"

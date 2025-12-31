@@ -12,7 +12,8 @@ type ChatMessage = {
 
 type ViewMode = "chat" | "podcast";
 
-export default function App() {
+// 聊天功能组件
+const ChatApp: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +129,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex h-screen bg-background text-foreground font-sans antialiased">
+    <div className="flex h-full">
       <main className="h-full w-full max-w-4xl mx-auto">
         {view === "podcast" ? (
           <PodcastGenerator onBack={handleBackToChat} />
@@ -164,6 +165,14 @@ export default function App() {
           />
         )}
       </main>
+    </div>
+  );
+};
+
+export default function App() {
+  return (
+    <div className="h-screen bg-background text-foreground font-sans antialiased">
+      <ChatApp />
     </div>
   );
 }

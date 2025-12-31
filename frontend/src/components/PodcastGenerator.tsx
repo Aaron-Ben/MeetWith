@@ -13,7 +13,7 @@ export const PodcastGenerator: React.FC<PodcastGeneratorProps> = ({
 }) => {
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("efficient");
-  const [speakerCount, setSpeakerCount] = useState<string>("2 人");
+  const [speakerCount] = useState<string>("2 人");
   const [hostName, setHostName] = useState<string>("主持人");
   const [guestName, setGuestName] = useState<string>("嘉宾");
 

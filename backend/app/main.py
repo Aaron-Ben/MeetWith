@@ -6,6 +6,15 @@ from typing import List, Dict, Optional
 from app.utils.llm_client import LLMClient
 from app.models.database import init_db
 
+# Import all models to ensure they're registered with SQLAlchemy before init_db() is called
+from app.models.ppt.project import PPTProject
+from app.models.ppt.page import Page
+from app.models.ppt.task import Task
+from app.models.ppt.material import Material
+from app.models.ppt.page_image_version import PageImageVersion
+from app.models.ppt.user_template import UserTemplate
+from app.models.refernce_file import ReferenceFile
+
 # ==================== 创建 FastAPI 应用 ====================
 app = FastAPI(
     title="MeetWith AI PPT API",
@@ -60,6 +69,7 @@ from app.api.material import material_router, material_global_router
 from app.api.reference_file import reference_file_router
 from app.api.export import export_router
 from app.api.file import file_router
+from app.api.settings import settings_router
 
 # 注册所有路由
 app.include_router(project_router)
@@ -71,6 +81,7 @@ app.include_router(material_global_router)
 app.include_router(reference_file_router)
 app.include_router(export_router)
 app.include_router(file_router)
+app.include_router(settings_router)
 
 # ==================== 健康检查 ====================
 @app.get("/health")

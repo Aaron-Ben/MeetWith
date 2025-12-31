@@ -6,13 +6,13 @@ from app.services.ppt.file import FileService
 from app.services.ppt.ai_service import AIService
 from app.services.ppt.task_manager import task_manager
 from app.services.ppt.image_tasks import generate_material_image_task
-from app.models.database import SessionLocal
+from app.models.database import SessionLocal, get_db
 from app.config import Config
 from fastapi import (
     APIRouter,
     Request,
     Query,
-    Path,
+    Path as FPath,
     Body,
     UploadFile,
     File,
@@ -24,6 +24,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
+from sqlalchemy.orm import Session
 from pathlib import Path
 import tempfile
 import shutil
@@ -71,16 +72,16 @@ def get_upload_folder(request: Request) -> str:
         raise HTTPException(status_code=500, detail={"error_type": "SERVER_ERROR", "message": "UPLOAD_FOLDER未配置"})
     return upload_folder
 
-def _build_material_query(filter_project_id: str):
+def _build_material_query(filter_project_id: str, db: Session):
     """构建素材查询语句"""
-    query = Material.query
+    query = db.query(Material)
 
     if filter_project_id == 'all':
         return query, None
     if filter_project_id == 'none':
         return query.filter(Material.project_id.is_(None)), None
 
-    project = PPTProject.query(Material).filter(Material.id ==(filter_project_id)
+    project = db.query(PPTProject).filter(PPTProject.id == filter_project_id).first()
     if not project:
         return None, HTTPException(
             status_code=404,
@@ -89,18 +90,18 @@ def _build_material_query(filter_project_id: str):
 
     return query.filter(Material.project_id == filter_project_id), None
 
-def _get_materials_list(filter_project_id: str):
+def _get_materials_list(filter_project_id: str, db: Session):
     """获取素材列表"""
-    query, error = _build_material_query(filter_project_id)
+    query, error = _build_material_query(filter_project_id, db)
     if error:
         return None, error
-    
+
     materials = query.order_by(Material.created_at.desc()).all()
     materials_list = [material.to_dict() for material in materials]
-    
+
     return materials_list, None
 
-def _resolve_target_project_id(raw_project_id: Optional[str], allow_none: bool = True):
+def _resolve_target_project_id(raw_project_id: Optional[str], db: Session, allow_none: bool = True):
     """解析目标项目ID"""
     if allow_none and (raw_project_id is None or raw_project_id == 'none'):
         return None, None
@@ -112,7 +113,7 @@ def _resolve_target_project_id(raw_project_id: Optional[str], allow_none: bool =
         )
 
     if raw_project_id:
-        project = PPTProject.query(Material).filter(Material.id ==(raw_project_id)
+        project = db.query(PPTProject).filter(PPTProject.id == raw_project_id).first()
         if not project:
             return None, HTTPException(
                 status_code=404,
@@ -124,7 +125,8 @@ def _resolve_target_project_id(raw_project_id: Optional[str], allow_none: bool =
 def _save_material_file(
     file: UploadFile,
     target_project_id: Optional[str],
-    upload_folder: str
+    upload_folder: str,
+    db: Session
 ) -> Material:
     """保存素材文件到磁盘和数据库"""
     if not file or not file.filename:
@@ -173,36 +175,38 @@ def _save_material_file(
     )
 
     try:
-        db.session.add(material)
-        db.session.commit()
+        db.add(material)
+        db.commit()
         return material
     except Exception:
-        db.session.rollback()
+        db.rollback()
         raise
 
 async def _handle_material_upload(
     request: Request,
+    db: Session,
     default_project_id: Optional[str] = None
 ) -> JSONResponse:
     """处理素材上传"""
     try:
         # 获取上传的文件
-        file = await request.form.get("file")  # FastAPI异步获取form数据
+        form_data = await request.form()
+        file = form_data.get("file")
         if not isinstance(file, UploadFile):
             raise HTTPException(
                 status_code=400,
                 detail={"error_type": "BAD_REQUEST", "message": "file is required"}
             )
-        
+
         # 解析project_id
         raw_project_id = request.query_params.get('project_id', default_project_id)
-        target_project_id, error = _resolve_target_project_id(raw_project_id)
+        target_project_id, error = _resolve_target_project_id(raw_project_id, db)
         if error:
             raise error
 
         # 保存文件
         upload_folder = get_upload_folder(request)
-        material = _save_material_file(file, target_project_id, upload_folder)
+        material = _save_material_file(file, target_project_id, upload_folder, db)
 
         return JSONResponse(
             status_code=201,
@@ -212,11 +216,11 @@ async def _handle_material_upload(
                 "message": "素材上传成功"
             }
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
-        db.session.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=500,
             detail={"error_type": "SERVER_ERROR", "message": str(e)}
@@ -240,7 +244,8 @@ async def generate_material_image(
     prompt: Optional[str] = Form(None),
     ref_image: Optional[UploadFile] = File(None),
     extra_images: List[UploadFile] = File([]),
-    json_data: Optional[Dict[str, Any]] = Body(None)
+    json_data: Optional[Dict[str, Any]] = Body(None),
+    db: Session = Depends(get_db)
 ):
     """
     POST /api/projects/{project_id}/materials/generate - 生成素材图片（异步）
@@ -249,7 +254,7 @@ async def generate_material_image(
     try:
         # 处理project_id
         if project_id != 'none':
-            project = PPTProject.query(Material).filter(Material.id ==(project_id)
+            project = db.query(PPTProject).filter(PPTProject.id == project_id).first()
             if not project:
                 raise HTTPException(
                     status_code=404,
@@ -276,7 +281,7 @@ async def generate_material_image(
         # 处理任务的project_id（Task不允许null）
         task_project_id = project_id if project_id is not None else 'global'
         if task_project_id != 'global':
-            project = PPTProject.query(Material).filter(Material.id ==(task_project_id)
+            project = db.query(PPTProject).filter(PPTProject.id == task_project_id).first()
             if not project:
                 raise HTTPException(
                     status_code=404,
@@ -328,8 +333,8 @@ async def generate_material_image(
                 'completed': 0,
                 'failed': 0
             })
-            db.session.add(task)
-            db.session.commit()
+            db.add(task)
+            db.commit()
 
             # 提交后台任务（复用原task_manager）
             app = request.app  # FastAPI获取app实例
@@ -353,7 +358,7 @@ async def generate_material_image(
                 "data": {"task_id": task.id, "status": "PENDING"},
                 "message": "素材生成任务已提交"
             }
-        
+
         except Exception as e:
             # 清理临时目录
             if temp_dir.exists():
@@ -363,7 +368,7 @@ async def generate_material_image(
     except HTTPException:
         raise
     except Exception as e:
-        db.session.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=503,
             detail={"error_type": "AI_SERVICE_ERROR", "message": str(e)}
@@ -374,18 +379,21 @@ async def generate_material_image(
     response_model=MaterialListResponse,
     responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
 )
-def list_materials(project_id: str = Path(..., description="项目ID")):
+def list_materials(
+    project_id: str = FPath(..., description="项目ID"),
+    db: Session = Depends(get_db)
+):
     """GET /api/projects/{project_id}/materials - 查询指定项目的素材列表"""
     try:
-        materials_list, error = _get_materials_list(project_id)
+        materials_list, error = _get_materials_list(project_id, db)
         if error:
             raise error
-        
+
         return {
             "materials": materials_list,
             "count": len(materials_list)
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -401,10 +409,11 @@ def list_materials(project_id: str = Path(..., description="项目ID")):
 )
 async def upload_material(
     request: Request,
-    project_id: str = Path(..., description="项目ID")
+    project_id: str = FPath(..., description="项目ID"),
+    db: Session = Depends(get_db)
 ):
     """POST /api/projects/{project_id}/materials/upload - 上传项目关联的素材"""
-    return await _handle_material_upload(request, default_project_id=project_id)
+    return await _handle_material_upload(request, db, default_project_id=project_id)
 
 # ------------------------------
 # 全局维度素材接口
@@ -415,19 +424,20 @@ async def upload_material(
     responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
 )
 def list_all_materials(
-    project_id: str = Query("all", description="过滤维度：all/none/具体项目ID")
+    project_id: str = Query("all", description="过滤维度：all/none/具体项目ID"),
+    db: Session = Depends(get_db)
 ):
     """GET /api/materials - 全局素材查询"""
     try:
-        materials_list, error = _get_materials_list(project_id)
+        materials_list, error = _get_materials_list(project_id, db)
         if error:
             raise error
-        
+
         return {
             "materials": materials_list,
             "count": len(materials_list)
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -441,9 +451,12 @@ def list_all_materials(
     response_model=SuccessResponse,
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
 )
-async def upload_material_global(request: Request):
+async def upload_material_global(
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """POST /api/materials/upload - 上传全局素材（不绑定项目）"""
-    return await _handle_material_upload(request, default_project_id=None)
+    return await _handle_material_upload(request, db, default_project_id=None)
 
 @material_global_router.delete(
     "/{material_id}",
@@ -452,11 +465,12 @@ async def upload_material_global(request: Request):
 )
 def delete_material(
     request: Request,
-    material_id: str = Path(..., description="素材ID")
+    material_id: str = FPath(..., description="素材ID"),
+    db: Session = Depends(get_db)
 ):
     """DELETE /api/materials/{material_id} - 删除素材（数据库+文件）"""
     try:
-        material = Material.query(Material).filter(Material.id ==(material_id)
+        material = db.query(Material).filter(Material.id == material_id).first()
         if not material:
             raise HTTPException(
                 status_code=404,
@@ -464,8 +478,8 @@ def delete_material(
             )
 
         # 删除数据库记录
-        db.session.delete(material)
-        db.session.commit()
+        db.delete(material)
+        db.commit()
 
         # 删除文件（失败仅日志）
         upload_folder = get_upload_folder(request)
@@ -482,11 +496,11 @@ def delete_material(
             "data": {"id": material_id},
             "message": "素材删除成功"
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
-        db.session.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=500,
             detail={"error_type": "SERVER_ERROR", "message": str(e)}
@@ -498,8 +512,8 @@ def delete_material(
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
 )
 def associate_materials_to_project(
-    request: Request,
-    data: AssociateMaterialRequest = Body(...)
+    data: AssociateMaterialRequest = Body(...),
+    db: Session = Depends(get_db)
 ):
     """POST /api/materials/associate - 将全局素材关联到指定项目"""
     try:
@@ -507,35 +521,35 @@ def associate_materials_to_project(
         material_urls = data.material_urls
 
         # 验证项目
-        project = Project.query(Material).filter(Material.id ==(project_id)
+        project = db.query(PPTProject).filter(PPTProject.id == project_id).first()
         if not project:
             raise HTTPException(
                 status_code=404,
                 detail={"error_type": "NOT_FOUND", "message": "Project not found"}
             )
-        
+
         # 更新素材的project_id
         updated_ids = []
-        materials_to_update = Material.query.filter(
+        materials_to_update = db.query(Material).filter(
             Material.url.in_(material_urls),
             Material.project_id.is_(None)
         ).all()
         for material in materials_to_update:
             material.project_id = project_id
             updated_ids.append(material.id)
-        
-        db.session.commit()
-        
+
+        db.commit()
+
         return {
             "success": True,
             "data": {"updated_ids": updated_ids, "count": len(updated_ids)},
             "message": "素材关联成功"
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
-        db.session.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=500,
             detail={"error_type": "SERVER_ERROR", "message": str(e)}

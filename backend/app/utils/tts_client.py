@@ -1,10 +1,10 @@
 import asyncio
 import os
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from loguru import logger
+from app.config import Config
 
 
 class MiniMaxTTSClient:
@@ -25,19 +25,10 @@ class MiniMaxTTSClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
     ):
-        self.api_key = api_key or os.getenv("MINIMAX_API_KEY")
-        if not self.api_key:
-            raise ValueError("MINIMAX_API_KEY 未配置，请在环境变量或 .env 中设置")
-
-        self.base_url = base_url or os.getenv(
-            "MINIMAX_TTS_BASE_URL", "https://api.minimaxi.com"
-        )
-        self.model = model or os.getenv("MINIMAX_TTS_MODEL", "speech-2.6-hd")
-
+        self.api_key = Config.MINIMAX_API_KEY
+        self.base_url = Config.MINIMAX_BASE_URL
+        self.model = Config.MINIMAX_TTS_MODEL
     async def synthesize(
         self,
         text: str,

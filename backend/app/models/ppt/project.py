@@ -3,6 +3,7 @@
 """
 import uuid
 from datetime import datetime
+from typing import List
 
 from sqlalchemy import String, Text, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -78,16 +79,23 @@ class PPTProject(Base):
         comment='更新时间'
     )
 
-    pages: Mapped['Page'] = relationship(
+    pages: Mapped[List['Page']] = relationship(
         'Page',
         back_populates='ppt_project',
         cascade='all, delete-orphan',
         order_by='Page.order_index',
     )
 
-    tasks: Mapped['Task'] = relationship(
+    tasks: Mapped[List['Task']] = relationship(
         'Task',
         back_populates='ppt_project',
+        cascade='all, delete-orphan',
+    )
+
+    reference_files: Mapped[List['ReferenceFile']] = relationship(
+        'ReferenceFile',
+        back_populates='project',
+        foreign_keys='ReferenceFile.project_id',
         cascade='all, delete-orphan',
     )
 
@@ -115,7 +123,10 @@ class PPTProject(Base):
         }
 
         if include_pages:
-            data['pages'] = [page.to_dict() for page in self.pages.order_by('order_index')]
+            if self.pages is not None:
+                data['pages'] = [page.to_dict() for page in sorted(self.pages, key=lambda p: p.order_index)]
+            else:
+                data['pages'] = []
 
         return data
 

@@ -24,7 +24,7 @@ class ReferenceFile(Base):
 
     project_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey('projects.id'),
+        ForeignKey('ppt_projects.id'),
         nullable=True,
         comment='Project ID (UUID) this file belongs to, can be null for global files'
     )
@@ -97,7 +97,7 @@ class ReferenceFile(Base):
     Relationships
     """
 
-    project: Mapped['Project'] = relationship('Project', back_populates='reference_files', foreign_keys=[project_id])
+    project: Mapped['PPTProject'] = relationship('PPTProject', back_populates='reference_files', foreign_keys=[project_id])
 
     
     def to_dict(self, include_content=True, include_failed_count=False):

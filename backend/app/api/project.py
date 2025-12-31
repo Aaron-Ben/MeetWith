@@ -1,6 +1,7 @@
 """
 项目CRUD API
 """
+import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, Body, HTTPException, Depends
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 
 from app.models.database import get_db
@@ -192,7 +193,9 @@ async def get_project(
     GET /api/projects/{project_id}
     """
     try:
-        project = db.query(PPTProject).filter(PPTProject.id == project_id).first()
+        project = db.query(PPTProject).options(
+            joinedload(PPTProject.pages)
+        ).filter(PPTProject.id == project_id).first()
 
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -388,6 +391,27 @@ async def generate_outline(
         )
 
 
+@project_router.post("/{project_id}/generate-outline", response_class=JSONResponse)
+async def generate_outline_alias(
+    project_id: str,
+    request_data: Optional[GenerateOutlineRequest] = Body(None),
+    db: Session = Depends(get_db)
+):
+    """
+    AI 生成大纲（别名，使用连字符）
+    POST /api/projects/{project_id}/generate-outline
+    """
+    # 如果没有传入请求数据，使用默认值
+    if request_data is None:
+        request_data = GenerateOutlineRequest()
+
+    # 如果已有页面，自动设置 force_regenerate
+    existing_pages = db.query(Page).filter(Page.project_id == project_id).all()
+    if existing_pages and not request_data.force_regenerate:
+        request_data.force_regenerate = True
+    return await generate_outline(project_id, request_data, db)
+
+
 @project_router.post("/{project_id}/generate/all-descriptions", response_class=JSONResponse)
 async def generate_all_descriptions(
     project_id: str,
@@ -395,9 +419,37 @@ async def generate_all_descriptions(
     db: Session = Depends(get_db)
 ):
     """
-    AI 生成所有页面描述
+    AI 生成所有页面描述（并发处理）
     POST /api/projects/{project_id}/generate/all-descriptions
     """
+    async def generate_single_description(page, project_context, outline, language):
+        """单个页面描述生成的异步包装"""
+        page_data = page.get_outline_content()
+        if not page_data:
+            return None, page
+
+        if page.part:
+            page_data['part'] = page.part
+
+        # 在线程池中运行同步的 LLM 调用
+        loop = asyncio.get_event_loop()
+        ai_service = AIService()
+        description_text = await loop.run_in_executor(
+            None,
+            ai_service.generate_page_description,
+            project_context,
+            outline,
+            page_data,
+            page.order_index + 1,
+            language
+        )
+
+        desc_content = {
+            "text": description_text,
+            "generated_at": datetime.utcnow().isoformat()
+        }
+        return desc_content, page
+
     try:
         project = db.query(PPTProject).filter(PPTProject.id == project_id).first()
         if not project:
@@ -424,38 +476,22 @@ async def generate_all_descriptions(
                     page_data['part'] = page.part
                 outline.append(page_data)
 
-        # 初始化AI服务
-        ai_service = AIService()
         language = request_data.language or "zh"
 
-        # 为每个页面生成描述
+        # 并发生成所有页面描述（限制并发数为5）
+        tasks = [
+            generate_single_description(page, project_context, outline, language)
+            for page in pages
+        ]
+        results = await asyncio.gather(*tasks)
+
+        # 保存结果
         generated_count = 0
-        for page in pages:
-            page_data = page.get_outline_content()
-            if not page_data:
-                continue
-
-            # 添加part信息
-            if page.part:
-                page_data['part'] = page.part
-
-            # 生成描述
-            description_text = ai_service.generate_page_description(
-                project_context,
-                outline,
-                page_data,
-                page.order_index + 1,
-                language=language
-            )
-
-            # 保存描述
-            desc_content = {
-                "text": description_text,
-                "generated_at": datetime.utcnow().isoformat()
-            }
-            page.set_description_content(desc_content)
-            page.status = 'DESCRIPTION_GENERATED'
-            generated_count += 1
+        for desc_content, page in results:
+            if desc_content:
+                page.set_description_content(desc_content)
+                page.status = 'DESCRIPTION_GENERATED'
+                generated_count += 1
 
         project.status = 'DESCRIPTIONS_GENERATED'
         project.updated_at = datetime.utcnow()
@@ -476,6 +512,19 @@ async def generate_all_descriptions(
             status_code=503,
             detail=f"AI_SERVICE_ERROR: {str(e)}"
         )
+
+
+@project_router.post("/{project_id}/generate-descriptions", response_class=JSONResponse)
+async def generate_descriptions(
+    project_id: str,
+    request_data: GenerateDescriptionsRequest = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    AI 生成所有页面描述（别名）
+    POST /api/projects/{project_id}/generate-descriptions
+    """
+    return await generate_all_descriptions(project_id, request_data, db)
 
 
 @project_router.post("/{project_id}/generate/all-images", response_class=JSONResponse)

@@ -29,6 +29,7 @@ from app.services.ppt.image_tasks import (
 )
 from app.utils.response import success_response, error_response  # 统一响应工具
 from app.config import Config
+from app.models.database import get_db
 
 # 初始化日志
 logger = logging.getLogger(__name__)
@@ -288,8 +289,8 @@ async def generate_page_description(
         ai_service = AIService()
 
         # 获取参考文件内容（复用原有逻辑）
-        from app.api.v1.project_controller import _get_project_reference_files_content
-        reference_files_content = _get_project_reference_files_content(project_id, db)
+        from app.api.project import _get_reference_files_content
+        reference_files_content = _get_reference_files_content(project_id, db)
         
         # 创建项目上下文
         project_context = ProjectContext(project, reference_files_content)
@@ -711,3 +712,36 @@ async def set_current_image_version(
         db.rollback()
         logger.error(f"Set current image version error: {str(e)}", exc_info=True)
         return error_response(f"SERVER_ERROR: {str(e)}", 500)
+
+
+# ------------------------------ 别名路由（使用连字符） ------------------------------
+@page_router.post("/{project_id}/pages/{page_id}/generate-description", response_class=JSONResponse)
+async def generate_page_description_alias(
+    project_id: str,
+    page_id: str,
+    request_data: Optional[GenerateDescriptionRequest] = Body(None),
+    db: Session = Depends(get_db)
+):
+    """
+    AI 生成页面描述（别名，使用连字符）
+    POST /api/projects/{project_id}/pages/{page_id}/generate-description
+    """
+    if request_data is None:
+        request_data = GenerateDescriptionRequest()
+    return await generate_page_description(project_id, page_id, request_data, db)
+
+
+@page_router.post("/{project_id}/pages/{page_id}/generate-image", response_class=JSONResponse, status_code=202)
+async def generate_page_image_alias(
+    project_id: str,
+    page_id: str,
+    request_data: Optional[GenerateImageRequest] = Body(None),
+    db: Session = Depends(get_db)
+):
+    """
+    AI 生成页面图片（别名，使用连字符）
+    POST /api/projects/{project_id}/pages/{page_id}/generate-image
+    """
+    if request_data is None:
+        request_data = GenerateImageRequest()
+    return await generate_page_image(project_id, page_id, request_data, db)

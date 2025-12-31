@@ -15,14 +15,10 @@ class LLMClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
     ):
-        self.api_key = api_key or Config.LLM_API_KEY
-        self.base_url = base_url or Config.LLM_BASE_URL
-        self.model = model or Config.LLM_MODEL
-
+        self.api_key = Config.QWEN_API_KEY
+        self.base_url = Config.QWEN_BASE_URL
+        self.model = Config.QWEN_MODEL
         if not self.api_key:
             raise ValueError("API key 未配置")
         

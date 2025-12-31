@@ -48,7 +48,7 @@ class AIService:
     def _call_llm(self, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
         """调用LLM"""
         try:
-            response = self.client.chat(messages, model=self.model)
+            response = self.client.chat(messages, temperature=temperature)
             return response
         except Exception as e:
             logger.error(f"LLM调用失败: {str(e)}")

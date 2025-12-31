@@ -63,7 +63,6 @@ class Material(Base):
 
     project: Mapped[Optional["PPTProject"]] = relationship(
         "PPTProject",
-        back_populates="materials",
         lazy="selectin"
     )
 

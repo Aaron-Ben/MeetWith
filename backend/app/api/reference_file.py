@@ -5,6 +5,7 @@ import os
 import logging
 import re
 import uuid
+import threading
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import unquote
@@ -63,14 +64,14 @@ def _parse_file_async(file_id: str, file_path: str, filename: str, app) -> None:
         db.commit()
 
         parser = FileParser(
-            mineru_token=config['MINERU_TOKEN'],
-            mineru_api_base=config['MINERU_API_BASE'],
-            google_api_key=config['GOOGLE_API_KEY'],
-            google_api_base=config['GOOGLE_API_BASE'],
-            openai_api_key=config['OPENAI_API_KEY'],
-            openai_api_base=config['OPENAI_API_BASE'],
-            image_caption_model=config['IMAGE_CAPTION_MODEL'],
-            provider_format=config.get('AI_PROVIDER_FORMAT', 'gemini')
+            mineru_token=Config['MINERU_TOKEN'],
+            mineru_api_base=Config['MINERU_API_BASE'],
+            google_api_key=Config['GOOGLE_API_KEY'],
+            google_api_base=Config['GOOGLE_API_BASE'],
+            openai_api_key=Config['OPENAI_API_KEY'],
+            openai_api_base=Config['OPENAI_API_BASE'],
+            image_caption_model=Config['IMAGE_CAPTION_MODEL'],
+            provider_format=Config.get('AI_PROVIDER_FORMAT', 'gemini')
         )
 
         logger.info(f"Starting to parse file: {filename}")
@@ -277,11 +278,10 @@ def trigger_file_parse(file_id: str, db: Session = Depends(get_db)):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"FILE_NOT_FOUND: {file_path}")
 
-    # 启动异步解析（注意：FastAPI的app实例获取方式可能不同）
-    from main import app  # 导入FastAPI应用实例
+    # 启动异步解析（传递None作为app，因为解析函数不实际使用它）
     thread = threading.Thread(
         target=_parse_file_async,
-        args=(reference_file.id, str(file_path), reference_file.filename, app)
+        args=(reference_file.id, str(file_path), reference_file.filename, None)
     )
     thread.daemon = True
     thread.start()
