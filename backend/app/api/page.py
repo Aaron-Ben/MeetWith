@@ -5,6 +5,7 @@ import logging
 import json
 import shutil
 import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
@@ -12,18 +13,22 @@ from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, Request, Body, Form, File, UploadFile, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 # 适配项目结构的导入
-from app.extensions import get_db  # 数据库会话依赖
 from app.models.ppt.project import PPTProject
 from app.models.ppt.page import Page
-from app.models.task import Task
-from app.services.ai_service import AIService
+from app.models.ppt.page_image_version import PageImageVersion
+from app.models.ppt.task import Task
 from app.services.ppt.file import FileService
-from app.services.project_context import ProjectContext
-from app.services.task_manager import task_manager, generate_single_page_image_task, edit_page_image_task
-from app.config.settings import settings  # 全局配置
+from app.services.ppt.ai_service import AIService, ProjectContext
+from app.services.ppt.task_manager import task_manager
+from app.services.ppt.image_tasks import (
+    generate_single_page_image_task,
+    edit_page_image_task
+)
 from app.utils.response import success_response, error_response  # 统一响应工具
+from app.config import Config
 
 # 初始化日志
 logger = logging.getLogger(__name__)
@@ -133,7 +138,7 @@ async def delete_page(
             raise HTTPException(status_code=404, detail="Page not found")
 
         # 删除页面图片
-        file_service = FileService(settings.UPLOAD_FOLDER)
+        file_service = FileService(Config.UPLOAD_FOLDER)
         await file_service.delete_page_image(project_id, page_id)  # 适配异步
 
         # 删除页面记录
@@ -249,7 +254,7 @@ async def generate_page_description(
         if not page or page.project_id != project_id:
             raise HTTPException(status_code=404, detail="Page not found")
 
-        project = db.query(Project).filter(Project.id == project_id).first()
+        project = db.query(PPTProject).filter(PPTProject.id == project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
 
@@ -294,7 +299,7 @@ async def generate_page_description(
         if page.part:
             page_data['part'] = page.part
 
-        language = request_data.language or settings.OUTPUT_LANGUAGE
+        language = request_data.language or Config.OUTPUT_LANGUAGE
         desc_text = ai_service.generate_page_description(
             project_context,
             outline,
@@ -409,7 +414,7 @@ async def generate_page_image(
 
         # 初始化服务
         ai_service = AIService()
-        file_service = FileService(settings.UPLOAD_FOLDER)
+        file_service = FileService(Config.UPLOAD_FOLDER)
 
         # 获取模板路径
         ref_image_path = None
@@ -459,7 +464,7 @@ async def generate_page_image(
         db.commit()
 
         # 提交异步任务（适配 FastAPI 后台任务）
-        language = request_data.language or settings.OUTPUT_LANGUAGE
+        language = request_data.language or Config.OUTPUT_LANGUAGE
         task_manager.submit_task(
             task.id,
             generate_single_page_image_task,
@@ -469,8 +474,8 @@ async def generate_page_image(
             file_service,
             outline,
             request_data.use_template,
-            settings.DEFAULT_ASPECT_RATIO,
-            settings.DEFAULT_RESOLUTION,
+            Config.DEFAULT_ASPECT_RATIO,
+            Config.DEFAULT_RESOLUTION,
             None,  # FastAPI 无需传递 app 实例，可通过配置直接获取
             project.extra_requirements,
             language
@@ -516,13 +521,13 @@ async def edit_page_image(
         if not page.generated_image_path:
             raise HTTPException(status_code=400, detail="Page must have generated image first")
 
-        project = db.query(Project).filter(Project.id == project_id).first()
+        project = db.query(PPTProject).filter(PPTProject.id == project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
 
         # 初始化服务
         ai_service = AIService()
-        file_service = FileService(settings.UPLOAD_FOLDER)
+        file_service = FileService(Config.UPLOAD_FOLDER)
 
         # 解析请求参数
         use_template_bool = use_template.lower() == 'true'
@@ -563,12 +568,15 @@ async def edit_page_image(
         temp_dir = None
         if context_images and len(context_images) > 0:
             # 创建临时目录
-            temp_dir = Path(tempfile.mkdtemp(dir=settings.UPLOAD_FOLDER))
+            temp_dir = Path(tempfile.mkdtemp(dir=Config.UPLOAD_FOLDER))
             try:
                 for uploaded_file in context_images:
                     if uploaded_file.filename:
-                        # 安全保存文件
-                        filename = secure_filename(uploaded_file.filename)
+                        # 安全保存文件 - 使用基本文件名清理
+                        import re
+                        # 移除路径分隔符和特殊字符，保留文件扩展名
+                        clean_name = re.sub(r'[^\w\-_\.]', '_', uploaded_file.filename)
+                        filename = clean_name.strip('.').replace('..', '_')
                         temp_path = temp_dir / filename
                         # 异步保存文件
                         with open(temp_path, "wb") as f:
@@ -606,8 +614,8 @@ async def edit_page_image(
             edit_instruction,
             ai_service,
             file_service,
-            settings.DEFAULT_ASPECT_RATIO,
-            settings.DEFAULT_RESOLUTION,
+            Config.DEFAULT_ASPECT_RATIO,
+            Config.DEFAULT_RESOLUTION,
             original_description,
             additional_ref_images if additional_ref_images else None,
             str(temp_dir) if temp_dir else None,

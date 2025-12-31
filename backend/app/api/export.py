@@ -3,40 +3,33 @@
 """
 import logging
 import os
-import io
-import tempfile
-import uuid
-from typing import Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from app.models.database import get_db
 from fastapi import APIRouter, Request, Query, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from PIL import Image
 
 # 适配项目结构的导入
-from app.extensions import get_db  # 数据库会话依赖
+from app.config import Config
 from app.models.ppt.project import PPTProject
 from app.models.ppt.page import Page
 from app.services.ppt.export import ExportService
 from app.services.ppt.file import FileService
-from app.services.ai_service import AIService
-from app.services.file_parser_service import FileParserService
-from app.config.settings import settings  # 全局配置
-from app.utils.response import success_response, error_response  # 统一响应工具
+from app.services.ppt.file_parser import FileParser
+from app.utils.response import success_response, error_response
 
 # 初始化日志
 logger = logging.getLogger(__name__)
 
-# 替换 Flask Blueprint 为 FastAPI APIRouter
 export_router = APIRouter(prefix="/api/projects", tags=["Export"])
+
 
 # ------------------------------ 基础导出接口 ------------------------------
 @export_router.get("/{project_id}/export/pptx", response_class=JSONResponse)
 async def export_pptx(
     request: Request,
     project_id: str,
-    filename: Optional[str] = Query(None, description="导出的PPTX文件名"),
+    filename: str = Query(default=None, description="Export filename (with .pptx)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -47,7 +40,7 @@ async def export_pptx(
         # 查询项目
         project = db.query(PPTProject).filter(PPTProject.id == project_id).first()
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail="PPTProject not found")
 
         # 获取项目下所有页面（按排序索引）
         pages = db.query(Page).filter(
@@ -58,7 +51,7 @@ async def export_pptx(
             raise HTTPException(status_code=400, detail="No pages found for project")
 
         # 获取图片路径
-        file_service = FileService(settings.UPLOAD_FOLDER)
+        file_service = FileService(Config.UPLOAD_FOLDER)
         image_paths = []
         
         for page in pages:
@@ -106,7 +99,7 @@ async def export_pptx(
 async def export_pdf(
     request: Request,
     project_id: str,
-    filename: Optional[str] = Query(None, description="导出的PDF文件名"),
+    filename: str = Query(default=None, description="Export filename (with .pdf)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -128,7 +121,7 @@ async def export_pdf(
             raise HTTPException(status_code=400, detail="No pages found for project")
 
         # 获取图片路径
-        file_service = FileService(settings.UPLOAD_FOLDER)
+        file_service = FileService(Config.UPLOAD_FOLDER)
         image_paths = []
         
         for page in pages:
@@ -171,6 +164,8 @@ async def export_pdf(
         logger.error(f"Export PDF error: {str(e)}", exc_info=True)
         return error_response(f"SERVER_ERROR: {str(e)}", 500)
 
+
+'''
 # ------------------------------ 可编辑 PPTX 导出接口 ------------------------------
 @export_router.get("/{project_id}/export/editable-pptx", response_class=JSONResponse)
 async def export_editable_pptx(
@@ -179,7 +174,6 @@ async def export_editable_pptx(
     filename: Optional[str] = Query(None, description="导出的可编辑PPTX文件名"),
     db: Session = Depends(get_db)
 ):
-    """
     导出可编辑的 PPTX 文件（基于 MinerU 解析）
     GET /api/projects/{project_id}/export/editable-pptx
     
@@ -189,7 +183,6 @@ async def export_editable_pptx(
     3. 将图片转为临时 PDF
     4. 调用 MinerU 解析 PDF
     5. 基于 MinerU 结果生成可编辑 PPTX
-    """
     # 初始化临时文件路径（用于finally清理）
     tmp_pdf_path = None
     clean_background_paths = []
@@ -289,13 +282,13 @@ async def export_editable_pptx(
             raise HTTPException(status_code=500, detail="MinerU token not configured")
 
         # 初始化解析服务
-        parser_service = FileParserService(
+        parser_service = FileParser(
             mineru_token=settings.MINERU_TOKEN,
             mineru_api_base=settings.MINERU_API_BASE
         )
 
         # 解析 PDF
-        batch_id, markdown_content, extract_id, error_message, failed_image_count = parser_service.parse_file(
+        batch_id, markdown_content, extract_id, error_message, failed_image_count = parser_service._parse_file(
             file_path=tmp_pdf_path,
             filename=f'presentation_{project_id}.pdf'
         )
@@ -333,7 +326,6 @@ async def export_editable_pptx(
         with Image.open(image_paths[0]) as first_img:
             slide_width, slide_height = first_img.size
 
-        # 生成可编辑 PPTX
         logger.info(f"Creating editable PPTX with {len(clean_background_paths)} clean background images")
         ExportService.create_editable_pptx_from_mineru(
             mineru_result_dir=mineru_result_dir,
@@ -382,3 +374,5 @@ async def export_editable_pptx(
                         logger.debug(f"Cleaned up temporary background: {bg_path}")
                     except Exception as e:
                         logger.warning(f"Failed to clean up temporary background: {str(e)}")
+
+'''               

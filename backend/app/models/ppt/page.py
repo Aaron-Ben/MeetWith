@@ -7,7 +7,7 @@ from datetime import datetime
 
 from app.models.database import Base
 from sqlalchemy import String, Integer, Text, DateTime, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
 
@@ -24,7 +24,7 @@ class Page(Base):
 
     project_id : Mapped[str] = mapped_column(
         String(36),
-        ForeignKey('projects.id'),
+        ForeignKey('ppt_projects.id'),
         nullable=False,
         comment='所属项目ID（UUID）'
     )
@@ -85,10 +85,10 @@ class Page(Base):
         comment='更新时间'
     )
 
-    project: Mapped['Project'] = mapped_column(
-        ForeignKey('projects.id'),
-        nullable=False,
-        comment='所属项目ID（UUID）'
+    # 关系
+    ppt_project: Mapped['PPTProject'] = relationship(
+        'PPTProject',
+        back_populates='pages'
     )
 
     def get_outline_content(self):

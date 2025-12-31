@@ -81,7 +81,6 @@ class PPTProject(Base):
     pages: Mapped['Page'] = relationship(
         'Page',
         back_populates='ppt_project',
-        lazy='dynamic',
         cascade='all, delete-orphan',
         order_by='Page.order_index',
     )
@@ -89,16 +88,14 @@ class PPTProject(Base):
     tasks: Mapped['Task'] = relationship(
         'Task',
         back_populates='ppt_project',
-        lazy='dynamic',
         cascade='all, delete-orphan',
     )
 
-    materials: Mapped['Material'] = relationship(
-        'Material',
-        back_populates='ppt_project',
-        lazy='dynamic',
-        cascade='all, delete-orphan',
-    )
+    # materials: Mapped['Material'] = relationship(
+    #     'Material',
+    #     back_populates='ppt_project',
+    #     cascade='all, delete-orphan',
+    # )
 
     def to_dict(self, include_pages=False):
         """Convert to dictionary"""

@@ -23,7 +23,7 @@ class Material(Base):
 
     project_id : Mapped[Optional[str]] = mapped_column(
         String(36),
-        ForeignKey('projects.id'),
+        ForeignKey('ppt_projects.id'),
         nullable=True,
         comment='关联项目ID（UUID）'
     )
@@ -34,10 +34,10 @@ class Material(Base):
         comment='参考材料名称'
     )
 
-    path : Mapped[str] = mapped_column(
+    relative_path : Mapped[str] = mapped_column(
         String(255),
         nullable=False,
-        comment='参考材料路径'
+        comment='参考材料相对路径'
     )
 
     url : Mapped[str] = mapped_column(
@@ -61,8 +61,8 @@ class Material(Base):
         comment='更新时间'
     )
 
-    project: Mapped[Optional["Project"]] = relationship(
-        "Project",
+    project: Mapped[Optional["PPTProject"]] = relationship(
+        "PPTProject",
         back_populates="materials",
         lazy="selectin"
     )
@@ -72,12 +72,12 @@ class Material(Base):
             'id': self.id,
             'project_id': self.project_id,
             'filename': self.filename,
-            'path': self.path,
+            'relative_path': self.relative_path,
             'url': self.url,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
 
     def __repr__(self) -> str:
-        return f"<Material(id={self.id}, filename={self.filename}, path={self.path}, url={self.url})>"
+        return f"<Material(id={self.id}, filename={self.filename}, relative_path={self.relative_path}, url={self.url})>"
     

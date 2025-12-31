@@ -17,6 +17,7 @@ import time
 import shutil
 import uuid
 from pathlib import Path
+from typing import Optional
 from PIL import Image
 from fastapi import HTTPException, UploadFile
 

@@ -1,5 +1,5 @@
 """
-上传参考文件api
+上传文件api
 """
 import os
 import logging
@@ -10,7 +10,7 @@ from datetime import datetime
 from urllib.parse import unquote
 from typing import Optional, List, Dict, Any
 
-from app import config
+from app.config import Config
 from app.models.database import SessionLocal, get_db
 from app.models.ppt.project import PPTProject
 from app.models.refernce_file import ReferenceFile
