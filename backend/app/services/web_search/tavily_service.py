@@ -168,11 +168,13 @@ class TavilyService:
             return None
 
         try:
-            response = self.client.get_answer(
+            # Tavily SDK 使用 qna_search 方法进行问答搜索
+            response = self.client.qna_search(
                 query=query,
-                search_depth=search_depth
+                search_depth=search_depth,
+                max_results=5
             )
-            return response.get("answer", "")
+            return response  # qna_search 直接返回答案字符串
         except Exception as e:
             logger.error(f"Get answer failed: {e}", exc_info=True)
             return None

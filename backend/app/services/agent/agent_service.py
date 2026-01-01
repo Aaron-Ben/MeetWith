@@ -59,7 +59,7 @@ class AgentService:
         """
         判断是否需要使用网络搜索
 
-        简化策略：使用关键词匹配
+        策略：使用关键词匹配
 
         Args:
             query: 用户查询
@@ -70,19 +70,27 @@ class AgentService:
         # 所有需要搜索的关键词
         search_keywords = [
             # 时间相关
-            "最新", "今天", "昨天", "今年", "去年", "现在", "当前", "最近",
-            str(CURRENT_YEAR), str(CURRENT_YEAR - 1), "2024", "2025", "2026",
+            "最新", "今天", "昨天", "今年", "去年", "现在", "当前", "最近", "目前",
+            str(CURRENT_YEAR), str(CURRENT_YEAR - 1), "2024", "2025", "2026", "2027",
+            "本周", "上周", "本月", "上月",
             # 实时信息
             "价格", "股价", "汇率", "天气", "比分", "战况", "实时",
+            "新闻", "消息", "发布会", "刚刚", "突发",
             # 体育/竞赛相关
-            "冠军", "排名", "战绩", "夺冠",
-            # 数量相关（配合其他词使用）
-            "几次", "多少次", "几回", "次数",
+            "冠军", "排名", "战绩", "夺冠", "世界杯", "奥运会", "nba", "cba",
+            # 技术相关
+            "最新版", "更新", "发布", "版本",
+            # 数量/事实相关
+            "几次", "多少次", "几回", "次数", "谁赢了", "谁是",
+            # 询问事实
+            "发生了什么", "怎么了", "结果如何", "怎么样了",
         ]
 
+        query_lower = query.lower()
+
         for keyword in search_keywords:
-            if keyword in query:
-                logger.info(f"Matched keyword: {keyword}")
+            if keyword in query or keyword.lower() in query_lower:
+                logger.info(f"Matched keyword: {keyword} in query: {query[:50]}...")
                 return True, query
 
         return False, ""

@@ -66,6 +66,8 @@ async def chat(req: ChatRequest):
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     # 如果启用工具，先执行工具调用（如搜索），然后流式输出最终响应
+    search_used = False  # 标记是否使用了搜索
+
     if req.use_tools:
         agent = AgentService(user_id=req.user_id)
 
@@ -99,6 +101,7 @@ async def chat_stream(req: ChatRequest):
                     if search_result and len(search_result) >= 50:
                         from datetime import datetime
                         CURRENT_YEAR = datetime.now().year
+                        search_used = True  # 标记使用了搜索
 
                         # 添加系统消息包含搜索结果
                         final_messages = [
@@ -131,6 +134,9 @@ async def chat_stream(req: ChatRequest):
         client = LLMClient()
 
         def token_generator():
+            # 如果使用了搜索，在开头添加标记
+            if search_used:
+                yield "[SEARCH_USED]"
             for chunk in client.chat_stream(final_messages):
                 yield chunk
 

@@ -1,7 +1,7 @@
 import type React from "react";
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Copy, Check } from "lucide-react";
+import { Loader2, Copy, Check, Globe } from "lucide-react";
 import { InputForm } from "@/components/InputForm";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
@@ -11,6 +11,7 @@ export type ChatMessage = {
   id: string;
   type: "human" | "ai";
   content: string;
+  searchUsed?: boolean;  // 是否使用了网络搜索
 };
 
 interface ChatMessagesViewProps {
@@ -60,6 +61,14 @@ export function ChatMessagesView({
                     : "bg-white border border-neutral-300 text-neutral-900 rounded-bl-none"
                 }`}
               >
+                {/* 网络搜索标记 */}
+                {message.type === "ai" && message.searchUsed && (
+                  <div className="absolute -top-2 left-2 bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full flex items-center gap-1 border border-blue-200">
+                    <Globe className="h-3 w-3" />
+                    <span>网络搜索</span>
+                  </div>
+                )}
+
                 <div className="prose prose-sm max-w-none break-words">
                   {message.type === "ai" ? (
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>

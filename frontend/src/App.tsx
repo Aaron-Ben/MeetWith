@@ -8,6 +8,7 @@ type ChatMessage = {
   id: string;
   type: "human" | "ai";
   content: string;
+  searchUsed?: boolean;  // 标记是否使用了网络搜索
 };
 
 type ViewMode = "chat" | "podcast";
@@ -87,15 +88,28 @@ const ChatApp: React.FC = () => {
         const reader = res.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let aiContent = "";
+        let searchUsed = false;
+        const SEARCH_MARKER = "[SEARCH_USED]";
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          aiContent += decoder.decode(value, { stream: true });
+
+          const chunk = decoder.decode(value, { stream: true });
+          aiContent += chunk;
+
+          // 检查搜索标记
+          if (aiContent.includes(SEARCH_MARKER)) {
+            searchUsed = true;
+            aiContent = aiContent.replace(SEARCH_MARKER, "");
+          }
+
           const contentSnapshot = aiContent;
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === aiMessageId ? { ...m, content: contentSnapshot } : m
+              m.id === aiMessageId
+                ? { ...m, content: contentSnapshot, searchUsed }
+                : m
             )
           );
         }

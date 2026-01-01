@@ -10,6 +10,65 @@ export interface SearchResult {
   publishedDate?: string;
 }
 
+// 新增：内容获取相关类型
+export interface PageContent {
+  url: string;
+  title: string;
+  content: string;
+  author?: string;
+  date?: string;
+  source: 'cache' | 'direct' | 'jina' | 'archive';
+  fetched_at?: string;
+}
+
+export interface FetchRequest {
+  url: string;
+  force_refresh?: boolean;
+}
+
+export interface FetchResponse {
+  success: boolean;
+  url: string;
+  title: string;
+  content: string;
+  author?: string;
+  date?: string;
+  source: 'cache' | 'direct' | 'jina' | 'archive';
+  fetched_at?: string;
+}
+
+// 新增：内容提取相关类型
+export interface ExtractedContent {
+  title: string;
+  summary: string;
+  key_points: string[];
+  relevance_score: number;
+  confidence: number;
+}
+
+export interface ExtractRequest {
+  content: string;
+  query: string;
+  url?: string;
+}
+
+export interface ExtractResponse {
+  success: boolean;
+  title: string;
+  summary: string;
+  key_points: string[];
+  relevance_score: number;
+  confidence: number;
+}
+
+// 新增：缓存相关类型
+export interface CacheStats {
+  size: number;
+  max_size: number;
+  ttl: number;
+  usage_percent: number;
+}
+
 export interface SearchUsage {
   used: number;
   limit: number;
