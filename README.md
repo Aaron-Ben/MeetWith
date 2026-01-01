@@ -1,123 +1,237 @@
-## 📁 项目结构
+# MeetWith - AI PPT & 播客生成平台
+
+一个基于 AI 的 PPT 和播客内容生成平台，集成网络搜索功能获取最新信息。
+
+## 功能特性
+
+### AI PPT 生成
+- AI 驱动的大纲自动生成
+- 多种精美模板可选
+- 实时预览与编辑
+- 导出为 PPTX 格式
+
+### AI 播客生成
+- 文本转语音 (TTS)
+- AI 文案生成
+- 音频播放与管理
+
+### 智能对话（集成网络搜索）
+- 基于 LLM 的智能对话
+- **网络搜索集成**：自动检测需要最新信息的问题并触发搜索
+- **多级回退内容获取**：缓存 → 直接抓取 → Jina.ai → Archive.org
+- **AI 内容提取**：智能提取网页关键信息（标题、摘要、要点）
+- **可视化标记**：对话中显示"网络搜索"标记，让用户知道何时使用了搜索
+
+## 技术栈
+
+### 后端
+- **框架**: FastAPI
+- **数据库**: SQLite
+- **AI 服务**:
+  - LLM (支持多种模型：GLM、Qwen、GPT等)
+  - Tavily API (网络搜索)
+  - Jina.ai Reader (网页内容提取)
+  - Archive.org Wayback Machine (网页历史回溯)
+- **其他**:
+  - uvloop (异步事件循环)
+  - trafilatura (网页内容提取)
+  - cachetools (LRU 缓存)
+
+### 前端
+- **框架**: React 18 + TypeScript
+- **构建工具**: Vite
+- **路由**: React Router v6
+- **UI 组件**: shadcn/ui
+- **样式**: Tailwind CSS
+- **Markdown**: react-markdown + remark-gfm
+
+## 项目结构
+
 ```
-ai_content_platform/  # 项目根目录
-├── README.md          # 全栈项目总说明（技术栈、启动方式、部署流程）
-├── docs/              # 项目文档（接口文档、数据库设计、前端组件文档）
-│   ├── api/           # API 接口文档（Swagger/OpenAPI 规范）
-│   ├── db/            # 数据库设计文档（SQLite 表结构、字段说明）
-│   └── frontend/      # 前端设计文档（组件设计、状态管理、路由规划）
-├── scripts/           # 工程化脚本（一键启动、部署、数据库初始化）
-│   ├── start-all.sh   # 本地一键启动前后端
-│   ├── deploy.sh      # 生产环境部署脚本
-│   └── init-db.py     # SQLite 数据库初始化（创建表、初始数据）
-├── .gitignore         # 全局忽略规则（前后端通用 + 各自专属）
-├── docker-compose.yml # 容器化部署配置（前端、后端、Nginx）
-├── nginx/             # Nginx 配置（反向代理、静态资源、跨域）
-│   └── nginx.conf
-├── backend/           # 后端模块（复用之前的 Python 结构，略作调整）
-│   ├── README.md      # 后端单独说明
+MeetWith/
+├── backend/                    # 后端服务
+│   ├── app/
+│   │   ├── api/               # API 路由
+│   │   │   ├── project.py     # PPT 项目接口
+│   │   │   ├── page.py        # PPT 页面接口
+│   │   │   ├── template.py    # 模板接口
+│   │   │   ├── material.py    # 素材接口
+│   │   │   ├── export.py      # 导出接口
+│   │   │   ├── web_search.py  # 网络搜索接口
+│   │   │   └── ...
+│   │   ├── models/            # 数据模型 (ORM)
+│   │   │   ├── ppt/           # PPT 相关模型
+│   │   │   ├── web_search.py  # 搜索使用记录
+│   │   │   └── ...
+│   │   ├── services/
+│   │   │   ├── agent/         # AI Agent 服务
+│   │   │   │   └── tools/     # Agent 工具
+│   │   │   │       └── web_search_tool.py  # 网络搜索工具
+│   │   │   ├── web_search/    # 网络搜索服务
+│   │   │   │   ├── tavily_service.py      # Tavily 搜索
+│   │   │   │   ├── search_service.py      # 搜索服务
+│   │   │   │   ├── content_fetcher.py     # 内容获取器（多级回退）
+│   │   │   │   ├── content_extractor.py   # AI 内容提取器
+│   │   │   │   ├── content_cache.py       # LRU 缓存
+│   │   │   │   ├── jina_fetcher.py        # Jina.ai 获取
+│   │   │   │   └── archive_fetcher.py     # Archive.org 获取
+│   │   │   ├── ppt/            # PPT 服务
+│   │   │   ├── podcast/        # 播客服务
+│   │   │   └── llm_client.py   # LLM 客户端
+│   │   ├── utils/              # 工具函数
+│   │   └── main.py             # FastAPI 主入口
 │   ├── requirements.txt
-│   ├── .env
-│   ├── .env.example
-│   ├── run.py
-│   ├── config/        # 后端配置（新增跨域、CORS 配置适配前端）
-│   ├── app/           # 核心应用（结构同之前，无大变化）
-│   │   ├── extensions.py  # 扩展初始化（SQLAlchemy、JWT、缓存等）
-│   │   ├── api/       # 接口层（新增 CORS 装饰器、响应格式适配前端）
-│   │   │   ├── ppt.py      # AI PPT 相关接口（生成、预览、导出、保存）
-│   │   │   ├── podcast.py  # 通用接口（文件上传、健康检查）
-│   │   │   └── common.py   # 通用接口（文件上传、健康检查）
-│   │   ├── models/         # 数据模型层（ORM 映射 SQLite）
-│   │   │   ├── base.py     # 模型基类（通用字段：id、创建时间、更新时间）
-│   │   │   ├── ppt.py      # PPT 模型（标题、模板、内容、生成状态、用户关联）
-│   │   │   ├── podcast.py  # 播客模型（标题、文本、音频路径、时长、生成状态、用户关联）
-│   │   │   └── file.py     # 文件模型（存储路径、类型、大小、关联业务）
-│   │   ├── services/       # 业务服务层（核心逻辑，解耦接口和模型）
-│   │   │   ├── ppt_service.py      # PPT 核心服务（AI 生成、模板渲染、导出）
-│   │   │   ├── podcast_service.py  # 播客核心服务（文本转语音、音频处理、AI 文案生成）
-│   │   │   ├── ai_client.py        # AI 客户端封装（调用第三方 AI 接口：OpenAI/讯飞等）
-│   │   │   └── file_service.py     # 文件服务（上传、存储、下载、清理）
-│   │   ├── schemas/        # 数据校验层（请求/响应参数校验）
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py    # 基础校验模型（分页、响应格式）
-│   │   │   ├── user.py    # 用户参数校验（注册、登录、更新）
-│   │   │   ├── ppt.py     # PPT 参数校验（生成、导出、查询）
-│   │   │   └── podcast.py # 播客参数校验（生成、上传、查询）
-│   │   ├── utils/
-│   │   │   ├── file_ops.py     # 文件操作（路径处理、格式转换、大小计算）
-│   │   │   ├── db_ops.py       # 数据库工具（SQLite 连接、事务、批量操作）
-│   │   │   ├── ai_utils.py     # AI 辅助工具（文本分割、PPT 结构解析、音频格式转换）
-│   │   │   └── response.py     # 统一响应格式（成功/失败、状态码、消息）
-│   │   └── middlewares/
-│   │       ├── logger.py       # 日志中间件（记录请求/响应日志）
-│   │       └── exception.py    # 异常处理中间件（统一捕获、返回友好提示）
-│   ├── migrations/             # 数据库迁移（适配 SQLite 结构变更，用 Alembic）
-│   ├── tests/
-│   ├── static/            # 静态文件（PPT 模板、默认头像、音频/PPT 临时文件）
-│   │   ├── ppt_templates/ # PPT 模板文件（pptx 格式）
-│   │   ├── podcasts/      # 播客音频存储
-│   │   └── ppts/          # 生成的 PPT 文件存储
-│   └── logs/
-└── frontend/          # React + TypeScript 前端模块
-    ├── README.md      # 前端启动、打包说明
-    ├── package.json   # 依赖清单
-    ├── tsconfig.json  # TypeScript 配置
-    ├── .env           # 前端环境变量（后端接口地址、请求超时等）
-    ├── .env.development # 开发环境变量
-    ├── .env.production  # 生产环境变量
-    ├── vite.config.ts # 构建工具配置（推荐 Vite，替代 Webpack 提升效率）
-    ├── public/        # 静态公共资源（favicon、index.html）
-    ├── src/           # 前端核心源码
-    │   ├── index.tsx  # 入口文件
-    │   ├── App.tsx    # 根组件
-    │   ├── router/    # 路由配置（React Router v6）
-    │   │   ├── index.tsx  # 路由注册
-    │   │   ├── routes.ts  # 路由列表（权限路由、懒加载）
-    │   │   └── guard.tsx  # 路由守卫（登录校验、权限控制）
-    │   ├── api/       # 接口请求层（封装 Axios，对接后端 API）
-    │   │   ├── index.ts    # Axios 实例配置（拦截器、超时、跨域）
-    │   │   ├── auth.ts     # 认证相关接口
-    │   │   ├── ppt.ts      # AI PPT 相关接口
-    │   │   ├── podcast.ts  # AI 播客相关接口
-    │   │   ├── user.ts     # 用户相关接口
-    │   │   └── file.ts     # 文件上传/下载接口
-    │   ├── store/     # 状态管理（推荐 Redux Toolkit/ Zustand）
-    │   │   ├── index.ts    # 状态仓库入口
-    │   │   ├── authSlice.ts # 认证状态（token、用户信息）
-    │   │   ├── pptSlice.ts  # PPT 相关状态（生成进度、列表、详情）
-    │   │   └── podcastSlice.ts # 播客相关状态
-    │   ├── components/ # 通用组件（复用性高，无业务耦合）
-    │   │   ├── common/     # 基础组件（按钮、输入框、弹窗、加载中）
-    │   │   ├── layout/     # 布局组件（头部、侧边栏、页脚）
-    │   │   ├── upload/     # 文件上传组件（PPT 模板、音频、头像）
-    │   │   └── preview/    # 预览组件（PPT 预览、音频播放）
-    │   ├── pages/      # 业务页面（按功能模块拆分）
-    │   │   ├── Login/      # 登录页
-    │   │   ├── Dashboard/  # 首页/仪表盘（个人数据、功能入口）
-    │   │   ├── PPT/        # AI PPT 模块（生成、列表、编辑、预览）
-    │   │   │   ├── Create.tsx  # PPT 生成页
-    │   │   │   ├── List.tsx    # PPT 列表页
-    │   │   │   └── Preview.tsx # PPT 预览页
-    │   │   ├── Podcast/    # AI 播客模块（生成、列表、播放、编辑）
-    │   │   │   ├── Create.tsx  # 播客生成页
-    │   │   │   ├── List.tsx    # 播客列表页
-    │   │   │   └── Play.tsx    # 播客播放页
-    │   │   └── User/       # 用户中心（个人信息、修改密码、历史记录）
-    │   ├── types/      # TypeScript 类型定义（全局通用类型）
-    │   │   ├── auth.ts     # 认证相关类型
-    │   │   ├── ppt.ts      # PPT 相关类型
-    │   │   ├── podcast.ts  # 播客相关类型
-    │   │   └── api.ts      # 接口请求/响应类型
-    │   ├── utils/      # 前端工具函数
-    │   │   ├── request.ts  # Axios 二次封装（请求拦截、响应处理）
-    │   │   ├── format.ts   # 格式化工具（时间、文件大小、状态文本）
-    │   │   └── storage.ts  # 本地存储工具（localStorage/sessionStorage）
-    │   └── hooks/      # 自定义 React Hooks（复用业务逻辑）
-    │       ├── useAuth.ts  # 认证 Hook（登录状态、权限校验）
-    │       ├── usePPT.ts   # PPT 业务 Hook（生成、查询、导出）
-    │       └── usePodcast.ts # 播客业务 Hook（生成、播放、上传）
-    ├── tests/         # 前端测试（单元测试、组件测试）
-    │   ├── unit/      # 单元测试（工具函数、Hook）
-    │   └── component/ # 组件测试（通用组件、业务组件）
-    └── dist/          # 前端打包产物（npm run build 生成）
+│   └── .env                    # 环境变量配置
+│
+├── frontend/                   # 前端应用
+│   ├── src/
+│   │   ├── components/         # 组件
+│   │   │   ├── ChatMessagesView.tsx    # 聊天消息视图（含搜索标记）
+│   │   │   ├── InputForm.tsx            # 输入表单
+│   │   │   ├── WelcomeScreen.tsx        # 欢迎页面
+│   │   │   └── ...
+│   │   ├── pages/              # 页面
+│   │   │   ├── PPT/            # PPT 相关页面
+│   │   │   │   ├── Home.tsx            # PPT 首页
+│   │   │   │   ├── OutlineEditor.tsx   # 大纲编辑
+│   │   │   │   ├── DetailEditor.tsx    # 详细编辑
+│   │   │   │   └── Preview.tsx         # 预览
+│   │   │   └── ...
+│   │   ├── App.tsx             # 根应用（聊天集成搜索）
+│   │   └── main.tsx            # 入口文件
+│   ├── package.json
+│   └── vite.config.ts
+│
+└── README.md                   # 项目说明
 ```
+
+## 环境变量配置
+
+### 后端 (.env)
+```env
+# LLM 配置
+OPENAI_API_KEY=your_openai_key
+OPENAI_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4
+
+# Tavily 搜索 API
+TAVILY_API_KEY=your_tavily_key
+
+# Jina.ai (可选，用于更好的网页内容提取)
+JINA_API_KEY=your_jina_key
+
+# 数据库
+DATABASE_URL=sqlite:///./test.db
+```
+
+### 前端 (.env.development)
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+## 快速开始
+
+### 1. 克隆项目
+```bash
+git clone <repository-url>
+cd MeetWith
+```
+
+### 2. 后端启动
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+### 3. 前端启动
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### 4. 访问应用
+- 前端: http://localhost:5173
+- 后端 API: http://localhost:8000
+- API 文档: http://localhost:8000/docs
+
+## 网络搜索功能说明
+
+### 工作原理
+
+1. **关键词触发**: 当用户提问包含时间敏感词（如"最新"、"今天"、"今年"、"价格"、"新闻"等）时自动触发搜索
+2. **Tavily 搜索**: 首先使用 Tavily API 获取相关网页列表
+3. **多级回退内容获取**:
+   - L1: 检查 LRU 缓存（1小时 TTL）
+   - L2: 直接抓取（trafilatura）
+   - L3: Jina.ai Reader API
+   - L4: Archive.org Wayback Machine
+4. **AI 内容提取**: 使用 LLM 从网页内容中提取标题、摘要、关键要点和相关性评分
+5. **流式响应**: 搜索结果作为上下文传递给 LLM，生成最终答案
+
+### 用户界面
+
+当触发网络搜索时，AI 回复会显示一个蓝色的"网络搜索"标记，包含：
+- 🌐 地球图标
+- "网络搜索"文字
+
+### 示例问题
+
+- "今天的天气怎么样？"
+- "2026年最新的 AI 新闻"
+- "最近的股价走势"
+- "最新的 iPhone 版本是什么？"
+
+## API 接口
+
+### 聊天接口
+```http
+POST /api/chat/stream
+Content-Type: application/json
+
+{
+  "messages": [
+    {"role": "user", "content": "今天有什么新闻？"}
+  ],
+  "use_tools": true
+}
+```
+
+### 网络搜索接口
+```http
+POST /api/web-search/search
+Content-Type: application/json
+
+{
+  "query": "搜索内容",
+  "max_results": 5
+}
+```
+
+### 网络搜索统计
+```http
+GET /api/web-search/usage
+```
+
+## 开发说明
+
+### 添加新的 Agent 工具
+
+1. 在 `backend/app/services/agent/tools/` 创建新的工具类
+2. 继承 `BaseTool` 并实现 `get_description()` 和 `run()` 方法
+3. 在 `AgentService` 中注册工具
+
+### 同步/异步兼容性
+
+项目使用 uvloop (FastAPI 默认)，在同步上下文中调用异步代码时使用：
+- `ContentFetcher.batch_fetch_sync()`
+- `ContentExtractor.extract_content_sync()`
+
+这些方法会在新的事件循环中运行异步代码，避免与 uvloop 冲突。
+
+## 许可证
+
+MIT License
