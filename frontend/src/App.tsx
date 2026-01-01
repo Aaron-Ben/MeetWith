@@ -75,7 +75,7 @@ const ChatApp: React.FC = () => {
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ messages: payload, model }),
+            body: JSON.stringify({ messages: payload, model, use_tools: true }),
             signal: controller.signal,
           }
         );

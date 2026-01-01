@@ -68,6 +68,14 @@ class Config:
     # 最大文件大小 (MB)
     MAX_FILE_SIZE_MB = 50
 
+    # ==================== 网络搜索配置 ====================
+    # Tavily API Key
+    TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
+    # 每日搜索限额
+    WEB_SEARCH_DAILY_LIMIT = int(os.environ.get("WEB_SEARCH_DAILY_LIMIT", "100"))
+    # 是否启用网络搜索
+    WEB_SEARCH_ENABLED = os.environ.get("WEB_SEARCH_ENABLED", "true").lower() == "true"
+
     # ==================== 其他配置 ====================
     # 日志级别
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
