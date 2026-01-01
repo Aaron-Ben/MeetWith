@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ChatMessagesView } from "@/components/ChatMessagesView";
 import { Button } from "@/components/ui/button";
-import { PodcastGenerator } from "./components/PodcastGenerator";
 
 type ChatMessage = {
   id: string;
@@ -11,14 +10,11 @@ type ChatMessage = {
   searchUsed?: boolean;  // 标记是否使用了网络搜索
 };
 
-type ViewMode = "chat" | "podcast";
-
 // 聊天功能组件
 const ChatApp: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<ViewMode>("chat");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
@@ -134,25 +130,14 @@ const ChatApp: React.FC = () => {
     setIsLoading(false);
   }, []);
 
-  const handleOpenPodcast = useCallback(() => {
-    setView("podcast");
-  },[]);
-
-  const handleBackToChat = useCallback(() => {
-    setView("chat");
-  }, []);
-
   return (
     <div className="flex h-full">
       <main className="h-full w-full max-w-4xl mx-auto">
-        {view === "podcast" ? (
-          <PodcastGenerator onBack={handleBackToChat} />
-        ) : messages.length === 0 ? (
+        {messages.length === 0 ? (
           <WelcomeScreen
             handleSubmit={handleSubmit}
             isLoading={isLoading}
             onCancel={handleCancel}
-            onOpenPodcast={handleOpenPodcast}
           />
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full">
@@ -175,7 +160,6 @@ const ChatApp: React.FC = () => {
             scrollAreaRef={scrollAreaRef}
             onSubmit={handleSubmit}
             onCancel={handleCancel}
-            onOpenPodcast={handleOpenPodcast}
           />
         )}
       </main>

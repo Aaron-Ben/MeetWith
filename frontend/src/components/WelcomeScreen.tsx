@@ -6,7 +6,6 @@ interface WelcomeScreenProps {
   handleSubmit: (inputValue: string, model: string) => void;
   onCancel: () => void;
   isLoading: boolean;
-  onOpenPodcast: () => void;
 }
 
 
@@ -14,7 +13,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   handleSubmit,
   onCancel,
   isLoading,
-  onOpenPodcast,
 }) => {
   const navigate = useNavigate();
 
@@ -46,7 +44,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           isLoading={isLoading}
           onCancel={onCancel}
           hasHistory={false}
-          onOpenPodcast={onOpenPodcast}
         />
       </div>
     </div>

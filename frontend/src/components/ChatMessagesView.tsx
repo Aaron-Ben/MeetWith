@@ -20,7 +20,6 @@ interface ChatMessagesViewProps {
   scrollAreaRef: React.RefObject<HTMLDivElement | null>;
   onSubmit: (inputValue: string, model: string) => void;
   onCancel: () => void;
-  onOpenPodcast: () => void;
 }
 
 export function ChatMessagesView({
@@ -29,7 +28,6 @@ export function ChatMessagesView({
   scrollAreaRef,
   onSubmit,
   onCancel,
-  onOpenPodcast,
 }: ChatMessagesViewProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -112,7 +110,6 @@ export function ChatMessagesView({
         isLoading={isLoading}
         onCancel={onCancel}
         hasHistory={messages.length > 0}
-        onOpenPodcast={onOpenPodcast}
       />
     </div>
   );
