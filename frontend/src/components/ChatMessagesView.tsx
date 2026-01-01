@@ -4,6 +4,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Copy, Check } from "lucide-react";
 import { InputForm } from "@/components/InputForm";
 import { Button } from "@/components/ui/button";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export type ChatMessage = {
   id: string;
@@ -58,8 +60,14 @@ export function ChatMessagesView({
                     : "bg-white border border-neutral-300 text-neutral-900 rounded-bl-none"
                 }`}
               >
-                <div className="whitespace-pre-wrap break-words">
-                  {message.content}
+                <div className="prose prose-sm max-w-none break-words">
+                  {message.type === "ai" ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  ) : (
+                    <div className="whitespace-pre-wrap">{message.content}</div>
+                  )}
                 </div>
                 {message.type === "ai" && message.content && (
                   <Button
