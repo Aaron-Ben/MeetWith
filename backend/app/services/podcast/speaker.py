@@ -1,19 +1,19 @@
-
 from typing import List, Dict
 from pydantic import BaseModel
 
-class Speaker(BaseModel):
+
+class Voice(BaseModel):
+    """TTS voice configuration"""
     name: str
     voice_id: str
-    backstory: str
-    personality: str
 
-class SpeakerProfile(BaseModel):
+
+class TTSProfile(BaseModel):
+    """TTS provider and voice configuration"""
     tts_provider: str
     tts_model: str
-    speakers: List[Speaker]
-
+    voices: List[Voice]
 
     def get_voice_mapping(self) -> Dict[str, str]:
-        """Get mapping of speaker names to voice IDs"""
-        return {speaker.name: speaker.voice_id for speaker in self.speakers}
+        """Get mapping of voice names to voice IDs"""
+        return {voice.name: voice.voice_id for voice in self.voices}

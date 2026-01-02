@@ -102,21 +102,28 @@ MeetWith/
 
 ## 环境变量配置
 
+### API 服务提供商
+
+| API 服务 | 提供商 | 用途 |
+|---------|--------|------|
+| LLM 推理 | [OpenRouter](https://openrouter.ai) | 多模型接入（GLM、Qwen、GPT等） |
+| 网络搜索 | [Tavily](https://tavily.com) | 智能搜索 API |
+| 通义千问 | [阿里云 DashScope](https://dashscope.aliyun.com) | Qwen 系列模型 |
+| DeepSeek | [DeepSeek](https://deepseek.com) | DeepSeek 系列模型 |
+| MiniMax | [MiniMax](https://api.minimax.chat) | MiniMax 系列模型 |
+
 ### 后端 (.env)
 ```env
+# 网络搜索配置
+TAVILY_API_KEY=your_tavily_key           # Tavily 搜索 API Key
+WEB_SEARCH_DAILY_LIMIT=100                # 每日搜索次数限制
+WEB_SEARCH_ENABLED=true                   # 是否启用网络搜索
+
 # LLM 配置
-OPENAI_API_KEY=your_openai_key
-OPENAI_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4
-
-# Tavily 搜索 API
-TAVILY_API_KEY=your_tavily_key
-
-# Jina.ai (可选，用于更好的网页内容提取)
-JINA_API_KEY=your_jina_key
-
-# 数据库
-DATABASE_URL=sqlite:///./test.db
+OPENROUTER_API_KEY=your_openrouter_key    # OpenRouter API Key（多模型）
+DASHSCOPE_API_KEY=your_dashscope_key      # 阿里云 DashScope API Key（通义千问）
+DEEPSEEK_API_KEY=your_deepseek_key        # DeepSeek API Key
+MINIMAX_API_KEY=your_minimax_key          # MiniMax API Key
 ```
 
 ### 前端 (.env.development)
@@ -229,4 +236,4 @@ GET /api/web-search/usage
 
 ## 许可证
 
-MIT License
+Apache2.0

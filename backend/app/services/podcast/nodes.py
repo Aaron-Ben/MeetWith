@@ -1,302 +1,37 @@
 import os
 import asyncio
-
 from pathlib import Path
-from typing import Dict, List, Any, AsyncIterable, Dict
+from typing import Dict, List
 from loguru import logger
-from app.services.podcast.core import Dialogue, Outline, Segment, combine_audio_files
-from app.services.podcast.speaker import SpeakerProfile
-from app.services.podcast.state import PodcastState
-from app.utils.llm_client import LLMClient
+
+from app.services.podcast.speaker import TTSProfile
 from app.utils.tts_client import MiniMaxTTSClient
 
 
-
-def generate_outline_node(state: PodcastState) -> Dict:
-
+async def generate_audio_batch(
+    transcript: List[Dict],
+    output_dir: Path,
+    tts_profile: TTSProfile,
+    batch_size: int = 2
+) -> List[Path]:
     """
-    使用自定义 LLMClient 生成播客大纲（Outline），不依赖 LangChain
+    Generate audio clips for a batch of dialogue segments using TTS.
 
-    输入：
-        state["content"]       原始内容
-        state["briefing"]      播客需求说明
-        state["num_segments"]  期望段数
-        state["speaker_profile"]  角色配置（可选）
+    Args:
+        transcript: List of dialogue dictionaries with 'speaker' and 'dialogue' keys
+        output_dir: Directory to save audio clips
+        tts_profile: TTS configuration profile
+        batch_size: Number of concurrent TTS requests
 
-    输出：
-        返回 {"outline": Outline(...) }，由调用方写回 state["outline"]。
+    Returns:
+        List of paths to generated audio clips
     """
-
-    logger.info("Generating outline node...")
-
-    content: str = state["content"]
-    briefing: str = state["briefing"]
-    num_segments: int = state["num_segments"]
-    speaker_profile: SpeakerProfile | None = state.get("speaker_profile")
-    
-    # 构造说话人列表（可选）
-    speaker_names: List[str] = []
-    if speaker_profile is not None and getattr(speaker_profile, "speakers", None):
-        speaker_names = [s.name for s in speaker_profile.speakers]
-
-    # 构造提示词（System + User），要求严格 JSON 输出
-    system_prompt = (
-        "你是一名资深播客策划编辑。"
-        "请根据给定的内容与要求，设计一个结构清晰的播客大纲。"
-        "你的输出必须是一个合法的 JSON 对象，不要包含额外解释。"
-    )
-
-    user_prompt = f"""
-请根据以下信息，生成一份播客大纲（outline），并使用 JSON 格式输出。
-
-[播客需求 Briefing]
-{briefing}
-
-[期望段数 num_segments]
-{num_segments}
-
-[原始内容 Content]
-{content}
-
-[可用说话人 Speakers]
-{", ".join(speaker_names) if speaker_names else "无特别指定，可自行安排角色"}
-
-请严格输出如下 JSON 结构（字段名必须一致）：
-
-{{
-  "segments": [
-    {{
-      "name": "本段的标题，简短概括本段内容",
-      "description": "本段的详细说明，说明要聊什么、信息重点、节奏",
-      "size": "short 或 medium 或 long 三选一，用于表示本段时长/信息量"
-    }}
-  ]
-}}
-
-要求：
-1. 必须是合法 JSON（可以被 json.loads 解析），不要出现注释或多余文本。
-2. segments 的长度应尽量接近 num_segments，如果内容很多可以适当多一段或少一段，但不要偏差太大。
-3. description 要尽量具体，可体现每段的论点/信息点，而不是一句很空泛的话。
-"""
-
-    client = LLMClient()
-
-    # 使用 json_object 模式，让服务端直接返回 JSON
-    try:
-        response_data = client.chat_json(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.3,
-            max_tokens=3000,
-        )
-    except Exception as e:
-        logger.error(f"Failed to call LLMClient for outline: {e}")
-        raise
-
-    # 解析 JSON 为 Outline/Segment
-    if not isinstance(response_data, dict) or "segments" not in response_data:
-        logger.error(f"Invalid outline JSON structure: {response_data}")
-        raise ValueError("大纲返回 JSON 结构不包含 'segments' 字段")
-
-    segments_data = response_data.get("segments") or []
-    if not isinstance(segments_data, list):
-        logger.error(f"'segments' should be a list, got: {type(segments_data)}")
-        raise ValueError("'segments' 字段必须是列表")
-
-    segments: List[Segment] = []
-    for idx, seg in enumerate(segments_data):
-        if not isinstance(seg, dict):
-            logger.warning(f"Segment[{idx}] is not a dict, skipped: {seg}")
-            continue
-        try:
-            segment = Segment(
-                name=seg.get("name", "").strip(),
-                description=seg.get("description", "").strip(),
-                size=seg.get("size", "medium"),
-            )
-            segments.append(segment)
-        except Exception as e:
-            logger.warning(f"Failed to parse segment[{idx}] {seg}: {e}")
-            continue
-
-    if not segments:
-        logger.error(f"No valid segments parsed from response: {response_data}")
-        raise ValueError("未能从模型返回中解析出有效的大纲段落（segments 为空）")
-
-    outline = Outline(segments=segments)
-    logger.info(f"Generated outline with {len(outline.segments)} segments")
-
-    return {"outline": outline}
-
-
-def generate_transcript_node(state: PodcastState) -> Dict:
-    
-    """
-        使用自定义 LLMClient，根据已有大纲 Outline 生成完整对话 transcript。
-
-        输入：
-            state["outline"]          必须已存在(生成的大纲)
-            state["content"]          原始内容，用作上下文
-            state["briefing"]         播客需求说明
-            state["speaker_profile"]  说话人配置（必须存在，至少一个 speaker）
-
-        输出：
-            返回 {"transcript": List[Dialogue]}，由调用方写回 state["transcript"]。
-        """
-    logger.info("Generating transcript node with custom LLMClient...")
-
-    outline: Outline | None = state.get("outline")
-    if outline is None:
-        raise ValueError("generate_transcript_node 需要 state['outline'] 不为空")
-
-    speaker_profile: SpeakerProfile | None = state.get("speaker_profile")
-    if speaker_profile is None or not getattr(speaker_profile, "speakers", None):
-        raise ValueError("generate_transcript_node 需要有效的 speaker_profile（至少一个 speaker）")
-
-    content: str = state["content"]
-    briefing: str = state["briefing"]
-
-    speaker_names = [s.name for s in speaker_profile.speakers]
-
-    client = LLMClient()
-    all_dialogues: List[Dialogue] = []
-
-    for idx, segment in enumerate(outline.segments):
-        logger.info(f"Generating transcript for segment {idx + 1}/{len(outline.segments)}: {segment.name}")
-
-        is_final = idx == len(outline.segments) - 1
-        turns = 3 if segment.size == "short" else 6 if segment.size == "medium" else 10
-
-        system_prompt = (
-            "你是一名专业的播客文案编剧，擅长为多角色播客编写自然、有信息量的对话。"
-            "请根据给定大纲段落和角色信息，编写该段的完整对话。"
-            "你的输出必须是一个合法 JSON 对象，不要包含任何多余文本。"
-        )
-
-        user_prompt = f"""
-请为下面这个播客大纲中的每一个段落，生成一段完整的多轮对话，并使用 JSON 格式输出。
-
-[播客需求 Briefing]
-{briefing}
-
-[原始内容 Content]
-{content}
-
-[当前大纲段落 Segment]
-- name: {segment.name}
-- description: {segment.description}
-- size: {segment.size}
-- is_final_segment: {is_final}
-
-[说话人 Speakers]
-{", ".join(speaker_names)}
-
-对话要求：
-1. 对话轮次（rounds）大致为 {turns} 轮，可以略多或略少。
-2. 每一句话都要指定 speaker，speaker 名必须来自上面的 Speakers 列表。
-3. 对话内容要紧扣当前段落的 description 和整篇内容，不要跑题。
-4. 允许角色之间有追问、补充、反驳等，自然流畅。
-5. 语言风格偏口语化，但信息要尽量具体，有观点、有细节。
-
-请严格输出如下 JSON 结构（字段名必须一致）：
-
-{{
-  "transcript": [
-    {{
-      "speaker": "speaker_name_1（必须是上面列出的某个名字）",
-      "dialogue": "这一轮说的话"
-    }},
-    {{
-      "speaker": "speaker_name_2",
-      "dialogue": "下一轮说的话"
-    }}
-  ]
-}}
-
-要求：
-1. 必须是合法 JSON（可以被 json.loads 解析），不要出现注释或多余文本。
-2. transcript 列表中的每一项都必须包含 speaker 和 dialogue 两个字段。
-3. 不要输出任何 JSON 之外的文字（例如“好的，以下是JSON”之类）。
-"""
-
-        try:
-            resp = client.chat_json(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.7,
-                max_tokens=4000,
-            )
-        except Exception as e:
-            logger.error(f"Failed to call LLMClient for transcript segment {idx}: {e}")
-            raise
-
-        if not isinstance(resp, dict) or "transcript" not in resp:
-            logger.error(f"Invalid transcript JSON for segment {idx}: {resp}")
-            raise ValueError(f"对话返回 JSON 结构不包含 'transcript' 字段（segment {idx}）")
-
-        seg_transcript = resp.get("transcript") or []
-        if not isinstance(seg_transcript, list):
-            logger.error(f"'transcript' for segment {idx} should be list, got: {type(seg_transcript)}")
-            raise ValueError(f"'transcript' 字段必须是列表（segment {idx}）")
-
-        for j, item in enumerate(seg_transcript):
-            if not isinstance(item, dict):
-                logger.warning(f"Segment {idx} transcript[{j}] is not a dict, skipped: {item}")
-                continue
-            speaker = (item.get("speaker") or "").strip()
-            dialogue_text = (item.get("dialogue") or "").strip()
-            if not speaker or not dialogue_text:
-                logger.warning(f"Segment {idx} transcript[{j}] has empty fields, skipped: {item}")
-                continue
-            if speaker not in speaker_names:
-                logger.warning(
-                    f"Segment {idx} transcript[{j}] speaker '{speaker}' not in speaker_names {speaker_names}, skipped"
-                )
-                continue
-            try:
-                dlg = Dialogue(speaker=speaker, dialogue=dialogue_text)
-                all_dialogues.append(dlg)
-            except Exception as e:
-                logger.warning(f"Failed to build Dialogue for segment {idx} transcript[{j}] {item}: {e}")
-                continue
-
-    logger.info(f"Generated transcript with {len(all_dialogues)} dialogue segments in total")
-
-    return {"transcript": all_dialogues}
-
-
-async def generate_all_audio_node(state: PodcastState) -> Dict:
-    """
-    使用自定义 LLMClient，根据已有对话 transcript 生成完整音频。
-
-    输入：
-        state["transcript"]       必须已存在（依据大纲生成的一系列对话）
-        state["briefing"]        播客需求说明
-        state["speaker_profile"] 说话人配置（必须存在，至少一个 speaker）
-
-    输出：
-        返回 {"audio_file": str}，由调用方写回 state["audio_file"]。
-    """
-    transcript = state["transcript"]
-    output_dir = state["output_dir"]
     total_segments = len(transcript)
 
-    # Get batch size from environment variable, default to 5
-    batch_size = int(os.getenv("TTS_BATCH_SIZE", "2"))
-    logger.info(f"Using TTS batch size: {batch_size}")
-
-    assert state.get("speaker_profile") is not None, "speaker_profile must be provided"
-
-    # Get TTS configuration from speaker profile
-    speaker_profile = state["speaker_profile"]
-    assert speaker_profile is not None, "speaker_profile must be provided"
-    tts_provider = speaker_profile.tts_provider
-    tts_model = speaker_profile.tts_model
-    voices = speaker_profile.get_voice_mapping()
+    # Get TTS configuration from profile
+    tts_provider = tts_profile.tts_provider
+    tts_model = tts_profile.tts_model
+    voices = tts_profile.get_voice_mapping()
 
     logger.info(
         f"Generating {total_segments} audio clips in sequential batches of {batch_size}, "
@@ -341,13 +76,21 @@ async def generate_all_audio_node(state: PodcastState) -> Dict:
 
     logger.info(f"Generated all {len(all_clip_paths)} audio clips")
 
-    return {"audio_clips": all_clip_paths}
+    return all_clip_paths
 
 
 async def generate_single_audio_clip(dialogue_info: Dict) -> Path:
     """
-    使用 MiniMaxTTSClient 为单条对话生成一段音频。
-    当前仅支持 tts_provider == 'minimax'，否则抛错或后续扩展。
+    Generate a single audio clip using MiniMax TTS.
+
+    Args:
+        dialogue_info: Dictionary containing dialogue text, speaker, and TTS configuration
+
+    Returns:
+        Path to the generated audio file
+
+    Raises:
+        ValueError: If TTS provider is not supported or speaker voice is not found
     """
     dialogue = dialogue_info["dialogue"]
     index = dialogue_info["index"]
@@ -358,11 +101,19 @@ async def generate_single_audio_clip(dialogue_info: Dict) -> Path:
 
     if tts_provider.lower() not in ("minimax", "minimax_tts"):
         raise ValueError(
-            f"当前 generate_single_audio_clip 仅支持 MiniMax TTS，"
-            f"但收到 tts_provider='{tts_provider}'"
+            f"generate_single_audio_clip only supports MiniMax TTS, "
+            f"but got tts_provider='{tts_provider}'"
         )
 
-    logger.info(f"Generating audio clip {index:04d} for {dialogue.speaker}")
+    # Support both dict and object dialogue formats
+    if isinstance(dialogue, dict):
+        speaker_name = dialogue.get("speaker", "")
+        dialogue_text = dialogue.get("dialogue", "")
+    else:
+        speaker_name = getattr(dialogue, "speaker", "")
+        dialogue_text = getattr(dialogue, "dialogue", "")
+
+    logger.info(f"Generating audio clip {index:04d} for {speaker_name}")
 
     # Create clips directory
     clips_dir = output_dir / "clips"
@@ -372,17 +123,17 @@ async def generate_single_audio_clip(dialogue_info: Dict) -> Path:
     filename = f"{index:04d}.mp3"
     clip_path = clips_dir / filename
 
-    # Create TTS model
-    voice_id = voices.get(dialogue.speaker)
+    # Get voice ID for speaker
+    voice_id = voices.get(speaker_name)
     if not voice_id:
-        raise ValueError(f"No voice ID found for speaker '{dialogue.speaker}'")
+        raise ValueError(f"No voice ID found for speaker '{speaker_name}'")
 
+    # Create TTS client and generate audio
     client = MiniMaxTTSClient(model=tts_model_name or None)
 
-    # Generate audio
     await client.synthesize(
-        text=dialogue.dialogue, 
-        voice_id=voice_id, 
+        text=dialogue_text,
+        voice_id=voice_id,
         output_path=clip_path
     )
 
@@ -391,111 +142,27 @@ async def generate_single_audio_clip(dialogue_info: Dict) -> Path:
     return clip_path
 
 
-async def combine_audio_node(state: PodcastState) -> Dict:
-    """Combine all audio clips into final podcast episode"""
-    logger.info("Starting audio combination")
-
-    clips_dir = state["output_dir"] / "clips"
-    audio_dir = state["output_dir"] / "audio"
-
-    # Combine audio files
-    result = await combine_audio_files(
-        clips_dir, f"{state['episode_name']}.mp3", audio_dir
-    )
-
-    final_path = Path(result["combined_audio_path"])
-    logger.info(f"Combined audio saved to: {final_path}")
-
-    return {"final_output_file_path": final_path}
-
-async def generate_podcast(state: PodcastState) -> AsyncIterable[Dict[str, Any]]:
+async def generate_all_audio(
+    transcript: List[Dict],
+    output_dir: Path,
+    tts_profile: TTSProfile
+) -> List[Path]:
     """
-    使用 nodes.py 中的 4 个节点按顺序生成完整播客，
-    并且在生成音频片段的过程中通过异步迭代“推送”新片段，
-    方便上层实现边生成边播放。
+    Generate audio clips for all dialogue segments.
 
-    参数:
-        state: PodcastState，需预先填好
-            - content: 原始内容
-            - briefing: 播客需求说明
-            - num_segments: 期望段数
-            - output_dir: 输出目录 Path
-            - episode_name: 最终音频文件名（不含扩展名）
-            - speaker_profile: 说话人和 TTS 配置
-    产出事件（async for 迭代）:
-        - {"event": "outline_generated", "outline": Outline}
-        - {"event": "transcript_generated", "transcript": list[Dialogue]}
-        - {"event": "audio_clip_generated", "index": int, "path": Path}
-        - {"event": "final_audio_ready", "final_output_file_path": Path}
+    This is a convenience wrapper around generate_audio_batch that reads
+    the batch size from environment variable TTS_BATCH_SIZE (default: 2).
+
+    Args:
+        transcript: List of dialogue dictionaries
+        output_dir: Directory to save audio clips
+        tts_profile: TTS configuration profile
+
+    Returns:
+        List of paths to generated audio clips
     """
+    # Get batch size from environment variable, default to 2
+    batch_size = int(os.getenv("TTS_BATCH_SIZE", "2"))
+    logger.info(f"Using TTS batch size: {batch_size}")
 
-    from app.services.podcast.nodes import (
-        generate_outline_node,
-        generate_transcript_node,
-        generate_all_audio_node,
-        combine_audio_node,
-    )
-
-    logger.info("Starting full podcast generation pipeline")
-
-    # 1. 生成大纲
-    outline_result = generate_outline_node(state)
-    state.update(outline_result)
-    logger.info("Outline generated")
-    yield {"event": "outline_generated", "outline": state["outline"]}
-
-    # 2. 生成逐句对话
-    transcript_result = generate_transcript_node(state)
-    state.update(transcript_result)
-    logger.info("Transcript generated")
-    yield {"event": "transcript_generated", "transcript": state["transcript"]}
-
-    # 3. 异步生成所有音频，同时轮询 clips 目录，发现新片段就立即 yield
-    output_dir: Path = state["output_dir"]
-    clips_dir = output_dir / "clips"
-    clips_dir.mkdir(parents=True, exist_ok=True)
-
-    # 后台启动 TTS 批量生成任务
-    audio_task = asyncio.create_task(generate_all_audio_node(state))
-
-    known_files: set[Path] = set()
-    clip_index = 0
-
-    while True:
-        # 当前已经生成的所有 mp3 片段
-        current_files = set(clips_dir.glob("*.mp3"))
-        # 找出新产生的片段
-        new_files = sorted(current_files - known_files)
-
-        for path in new_files:
-            known_files.add(path)
-            clip_index += 1
-            logger.info(f"Detected new audio clip for streaming: {path}")
-            # 把新片段的信息抛给上层，方便边生成边播放
-            yield {
-                "event": "audio_clip_generated",
-                "index": clip_index,
-                "path": path,
-            }
-
-        # 如果 TTS 任务已完成，则同步一次返回值后跳出循环
-        if audio_task.done():
-            audio_result = await audio_task  # {"audio_clips": List[Path]}
-            state.update(audio_result)
-            break
-
-        # 没完成就睡一会儿，继续轮询
-        await asyncio.sleep(0.5)
-
-    logger.info("All audio clips generated")
-
-    # 4. 合并所有片段为最终的播客音频
-    final_result = await combine_audio_node(state)
-    state.update(final_result)
-    logger.info(f"Final podcast audio ready at: {state['final_output_file_path']}")
-
-    yield {
-        "event": "final_audio_ready",
-        "final_output_file_path": state["final_output_file_path"],
-    }
-
+    return await generate_audio_batch(transcript, output_dir, tts_profile, batch_size)
