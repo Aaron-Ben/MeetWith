@@ -16,3 +16,4 @@ input
 upload
 
 backend/config.env
+backend/DebugLog

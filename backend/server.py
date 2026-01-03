@@ -21,15 +21,10 @@ from dotenv import load_dotenv
 from plugin_manager import plugin_manager
 
 # 加载环境变量
-# 尝试从多个位置加载配置文件
-config_paths = ['config.env', 'backend/config.env', str(Path(__file__).parent / 'config.env')]
-for config_path in config_paths:
-    if Path(config_path).exists():
-        load_dotenv(config_path)
-        break
-else:
-    # 如果找不到配置文件，尝试从默认位置加载
-    load_dotenv()
+config_path = Path(__file__).parent / 'config.env'
+
+load_dotenv(config_path)
+
 
 # 配置日志
 logging.basicConfig(
@@ -156,6 +151,17 @@ async def replace_common_variables(text: Any) -> Any:
         logger.warning(f"农历日期转换失败: {e}")
         processed_text = processed_text.replace('{{Festival}}', date_str)
 
+    # Var 开头的环境变量（优先替换，以便其中包含的其他占位符能被后续处理）
+    for key in os.environ:
+        if key.startswith('Var'):
+            placeholder = f'{{{{{key}}}}}'
+            value = os.getenv(key, '')
+            processed_text = processed_text.replace(placeholder, value or f'未配置{key}')
+
+    # EmojiPrompt
+    if os.getenv('EmojiPrompt'):
+        processed_text = processed_text.replace('{{EmojiPrompt}}', os.getenv('EmojiPrompt'))
+
     # 插件变量
     weather_info = plugin_manager.get_placeholder_value("{{VCPWeatherInfo}}")
     processed_text = processed_text.replace('{{VCPWeatherInfo}}', weather_info)
@@ -164,17 +170,6 @@ async def replace_common_variables(text: Any) -> Any:
     individual_descriptions = plugin_manager.get_individual_plugin_descriptions()
     for placeholder_key, description in individual_descriptions.items():
         processed_text = processed_text.replace(f'{{{{{placeholder_key}}}}}', description)
-
-    # EmojiPrompt
-    if os.getenv('EmojiPrompt'):
-        processed_text = processed_text.replace('{{EmojiPrompt}}', os.getenv('EmojiPrompt'))
-
-    # Var 开头的环境变量
-    for key in os.environ:
-        if key.startswith('Var'):
-            placeholder = f'{{{{{key}}}}}'
-            value = os.getenv(key, '')
-            processed_text = processed_text.replace(placeholder, value or f'未配置{key}')
 
     # Port
     if os.getenv('PORT'):
@@ -667,33 +662,6 @@ async def chat_completions(request: Request):
         if 'messages' in original_body:
             original_body['messages'] = await replace_variables_in_messages(original_body['messages'])
 
-        # ==================== 2.5 添加工具描述到系统消息 ====================
-        # 构建工具描述
-        plugin_descriptions = plugin_manager.get_individual_plugin_descriptions()
-        if plugin_descriptions:
-            tools_desc = "\n\n### 可用工具\n\n你可以使用以下工具来完成任务：\n\n"
-            for placeholder, description in plugin_descriptions.items():
-                tools_desc += description + "\n\n"
-
-            # 检查是否已有系统消息
-            has_system = any(msg.get('role') == 'system' for msg in original_body.get('messages', []))
-
-            if not has_system:
-                # 在消息开头添加系统消息
-                original_body['messages'].insert(0, {
-                    'role': 'system',
-                    'content': '你是一个有用的 AI 助手。' + tools_desc
-                })
-                logger.info('[Server] Added system message with tool descriptions')
-            else:
-                # 在第一个系统消息后追加工具描述
-                for msg in original_body['messages']:
-                    if msg.get('role') == 'system':
-                        msg['content'] += tools_desc
-                        logger.info('[Server] Appended tool descriptions to existing system message')
-                        break
-
-        await write_debug_log('LogOutputAfterProcessing', original_body)
 
         # ==================== 3. 调用 AI API ====================
         is_streaming = original_body.get('stream', False)

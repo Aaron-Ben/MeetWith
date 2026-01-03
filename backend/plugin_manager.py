@@ -1,5 +1,5 @@
 """
-插件管理器，负责插件的发现、加载、管理和执行
+插件管理器，统一管理，加载，执行不同类型插件
 """
 
 import os
@@ -415,7 +415,7 @@ class PluginManager:
     async def process_tool_call(self, tool_name: str, tool_args: dict) -> Any:
         """
         处理工具调用
-        这是 server.js 调用的主要接口
+        这是 server.py 调用的主要接口
         """
         plugin = self.plugins.get(tool_name)
         if not plugin:

@@ -2,13 +2,14 @@ import ast
 import operator
 import math
 import statistics
-import sys # 新增：用于 stdin, stdout, stderr
+import sys
 from typing import Union, Dict, Tuple
-# from mcp.server.fastmcp import FastMCP # 移除MCP
 from sympy import sympify, Symbol, integrate, diff, sin, cos, pi as sympy_pi, atan, asin, acos, sqrt, latex, sinh, cosh, tanh, asinh, acosh, atanh, oo as sympy_inf
 from scipy import stats
 from scipy.integrate import quad
 from numpy import inf as numpy_inf
+import json
+
 
 # 支持的操作符 (保持不变)
 allowed_operators = {
@@ -242,7 +243,6 @@ def evaluate(expression: str) -> str:
         # Generic error for anything else
         return f"Calculation Error: {str(e)}"
 
-import json # 新增：用于输出 JSON
 
 def main():
     expression_input = sys.stdin.readline().strip()
