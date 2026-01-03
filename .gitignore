@@ -14,3 +14,5 @@ frontend/pnpm-lock.yaml
 
 input
 upload
+
+backend/config.env
