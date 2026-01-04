@@ -8,7 +8,6 @@ type ChatMessage = {
   id: string;
   type: "human" | "ai";
   content: string;
-  searchUsed?: boolean;  // 标记是否使用了网络搜索
 };
 
 export const ChatApp: React.FC = () => {
@@ -84,8 +83,6 @@ export const ChatApp: React.FC = () => {
         const reader = res.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let aiContent = "";
-        let searchUsed = false;
-        const SEARCH_MARKER = "[SEARCH_USED]";
 
         while (true) {
           const { done, value } = await reader.read();
@@ -94,17 +91,11 @@ export const ChatApp: React.FC = () => {
           const chunk = decoder.decode(value, { stream: true });
           aiContent += chunk;
 
-          // 检查搜索标记
-          if (aiContent.includes(SEARCH_MARKER)) {
-            searchUsed = true;
-            aiContent = aiContent.replace(SEARCH_MARKER, "");
-          }
-
           const contentSnapshot = aiContent;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === aiMessageId
-                ? { ...m, content: contentSnapshot, searchUsed }
+                ? { ...m, content: contentSnapshot }
                 : m
             )
           );
