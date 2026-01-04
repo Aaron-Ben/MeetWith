@@ -7,12 +7,6 @@ from app.utils.llm_client import LLMClient
 from app.models.database import init_db
 
 # Import all models to ensure they're registered with SQLAlchemy before init_db() is called
-from app.models.ppt.project import PPTProject
-from app.models.ppt.page import Page
-from app.models.ppt.task import Task
-from app.models.ppt.material import Material
-from app.models.ppt.page_image_version import PageImageVersion
-from app.models.ppt.user_template import UserTemplate
 from app.models.refernce_file import ReferenceFile
 from app.models.web_search import WebSearchUsage
 
@@ -162,27 +156,11 @@ async def get_tools():
     }
 
 # ==================== PPT 项目相关路由 ====================
-from app.api.project import project_router
-from app.api.page import page_router
-from app.api.template import template_router, user_template_router
-from app.api.material import material_router, material_global_router
-from app.api.reference_file import reference_file_router
-from app.api.export import export_router
 from app.api.file import file_router
-from app.api.settings import settings_router
 from app.api.web_search import router as web_search_router
 
 # 注册所有路由
-app.include_router(project_router)
-app.include_router(page_router)
-app.include_router(template_router)
-app.include_router(user_template_router)
-app.include_router(material_router)
-app.include_router(material_global_router)
-app.include_router(reference_file_router)
-app.include_router(export_router)
 app.include_router(file_router)
-app.include_router(settings_router)
 app.include_router(web_search_router)
 
 # ==================== 健康检查 ====================

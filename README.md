@@ -1,32 +1,40 @@
-# MeetWith - AI PPT 生成平台
+# MeetWith - AI 智能助手平台
 
-一个基于 AI 的 PPT 内容生成平台，集成网络搜索功能获取最新信息。
+一个基于 AI 的智能对话平台，支持插件化扩展、网络搜索、日记管理等丰富功能。
 
 ## 功能特性
 
-### AI PPT 生成
-- AI 驱动的大纲自动生成
-- 多种精美模板可选
-- 实时预览与编辑
-- 导出为 PPTX 格式
-
-### 智能对话（集成网络搜索）
+### 智能对话
 - 基于 LLM 的智能对话
 - **网络搜索集成**：自动检测需要最新信息的问题并触发搜索
 - **多级回退内容获取**：缓存 → 直接抓取 → Jina.ai → Archive.org
 - **AI 内容提取**：智能提取网页关键信息（标题、摘要、要点）
-- **可视化标记**：对话中显示"网络搜索"标记，让用户知道何时使用了搜索
+- **可视化标记**：对话中显示"网络搜索"标记
+
+### 插件系统
+- **动态插件加载**：支持热加载/卸载插件
+- **插件管理面板**：Web 界面管理插件配置
+- **多种插件类型**：
+  - **科学计算器** (SciCalculator)：数学计算
+  - **日记管理** (DailyNoteManager)：AI 输出的日记保存为 txt 文件
+  - **日记读取** (DailyNoteGet)：读取历史日记内容
+  - **日记写入** (DailyNoteWrite)：写入新的日记条目
+
+### VCP 工具调用协议
+- 自定义的工具调用协议
+- 支持多轮工具调用
+- 变量替换系统（时间、日期、插件变量等）
 
 ## 技术栈
 
 ### 后端
 - **框架**: FastAPI
-- **数据库**: SQLite
 - **AI 服务**:
   - LLM (支持多种模型：GLM、Qwen、GPT等)
   - Tavily API (网络搜索)
   - Jina.ai Reader (网页内容提取)
   - Archive.org Wayback Machine (网页历史回溯)
+- **插件系统**: 动态 Python 插件加载
 - **其他**:
   - uvloop (异步事件循环)
   - trafilatura (网页内容提取)
@@ -46,53 +54,37 @@
 MeetWith/
 ├── backend/                    # 后端服务
 │   ├── app/
-│   │   ├── api/               # API 路由
-│   │   │   ├── project.py     # PPT 项目接口
-│   │   │   ├── page.py        # PPT 页面接口
-│   │   │   ├── template.py    # 模板接口
-│   │   │   ├── material.py    # 素材接口
-│   │   │   ├── export.py      # 导出接口
-│   │   │   ├── web_search.py  # 网络搜索接口
-│   │   │   └── ...
-│   │   ├── models/            # 数据模型 (ORM)
-│   │   │   ├── ppt/           # PPT 相关模型
-│   │   │   ├── web_search.py  # 搜索使用记录
-│   │   │   └── ...
 │   │   ├── services/
 │   │   │   ├── agent/         # AI Agent 服务
-│   │   │   │   └── tools/     # Agent 工具
-│   │   │   │       └── web_search_tool.py  # 网络搜索工具
 │   │   │   ├── web_search/    # 网络搜索服务
-│   │   │   │   ├── tavily_service.py      # Tavily 搜索
-│   │   │   │   ├── search_service.py      # 搜索服务
-│   │   │   │   ├── content_fetcher.py     # 内容获取器（多级回退）
-│   │   │   │   ├── content_extractor.py   # AI 内容提取器
-│   │   │   │   ├── content_cache.py       # LRU 缓存
-│   │   │   │   ├── jina_fetcher.py        # Jina.ai 获取
-│   │   │   │   └── archive_fetcher.py     # Archive.org 获取
-│   │   │   ├── ppt/            # PPT 服务
-│   │   │   ├── podcast/        # 播客服务
-│   │   │   └── llm_client.py   # LLM 客户端
-│   │   ├── utils/              # 工具函数
-│   │   └── main.py             # FastAPI 主入口
-│   ├── requirements.txt
-│   └── .env                    # 环境变量配置
+│   │   │   ├── llm_client.py  # LLM 客户端
+│   │   │   └── ...
+│   │   ├── models/            # 数据模型
+│   │   └── utils/             # 工具函数
+│   ├── plugins/               # 插件目录
+│   │   ├── SciCalculator/     # 科学计算器插件
+│   │   ├── DailyNoteManager/  # 日记管理插件
+│   │   ├── DailyNoteGet/      # 日记读取插件
+│   │   └── DailyNoteWrite/    # 日记写入插件
+│   ├── routes/                # API 路由
+│   │   └── setting.py         # 管理接口
+│   ├── plugin_manager.py      # 插件管理器
+│   ├── server.py              # FastAPI 服务器入口
+│   ├── config.env             # 配置文件
+│   └── requirements.txt
 │
 ├── frontend/                   # 前端应用
 │   ├── src/
 │   │   ├── components/         # 组件
-│   │   │   ├── ChatMessagesView.tsx    # 聊天消息视图（含搜索标记）
+│   │   │   ├── ChatMessagesView.tsx    # 聊天消息视图
 │   │   │   ├── InputForm.tsx            # 输入表单
 │   │   │   ├── WelcomeScreen.tsx        # 欢迎页面
-│   │   │   └── ...
+│   │   │   └── Settings.tsx             # 设置页面
 │   │   ├── pages/              # 页面
-│   │   │   ├── PPT/            # PPT 相关页面
-│   │   │   │   ├── Home.tsx            # PPT 首页
-│   │   │   │   ├── OutlineEditor.tsx   # 大纲编辑
-│   │   │   │   ├── DetailEditor.tsx    # 详细编辑
-│   │   │   │   └── Preview.tsx         # 预览
-│   │   │   └── ...
-│   │   ├── App.tsx             # 根应用（聊天集成搜索）
+│   │   │   ├── Chat.tsx        # 聊天页面
+│   │   │   └── Settings.tsx    # 设置页面
+│   │   ├── router/             # 路由配置
+│   │   ├── App.tsx             # 根应用
 │   │   └── main.tsx            # 入口文件
 │   ├── package.json
 │   └── vite.config.ts
@@ -112,23 +104,33 @@ MeetWith/
 | DeepSeek | [DeepSeek](https://deepseek.com) | DeepSeek 系列模型 |
 | MiniMax | [MiniMax](https://api.minimax.chat) | MiniMax 系列模型 |
 
-### 后端 (.env)
+### 后端 (config.env)
 ```env
-# 网络搜索配置
-TAVILY_API_KEY=your_tavily_key           # Tavily 搜索 API Key
-WEB_SEARCH_DAILY_LIMIT=100                # 每日搜索次数限制
-WEB_SEARCH_ENABLED=true                   # 是否启用网络搜索
+# 服务器配置
+PORT=6005                              # 服务端口
+API_URL=https://openrouter.ai/api/v1  # AI API 地址
+API_Key=your_api_key                   # API 密钥
+DebugMode=false                        # 调试模式
+ShowVCP=false                          # 显示 VCP 输出
 
-# LLM 配置
-OPENROUTER_API_KEY=your_openrouter_key    # OpenRouter API Key（多模型）
-DASHSCOPE_API_KEY=your_dashscope_key      # 阿里云 DashScope API Key（通义千问）
-DEEPSEEK_API_KEY=your_deepseek_key        # DeepSeek API Key
-MINIMAX_API_KEY=your_minimax_key          # MiniMax API Key
+# 网络搜索配置
+TAVILY_API_KEY=your_tavily_key         # Tavily 搜索 API Key
+WEB_SEARCH_DAILY_LIMIT=100             # 每日搜索次数限制
+WEB_SEARCH_ENABLED=true                # 是否启用网络搜索
+
+# 其他 LLM 配置
+DASHSCOPE_API_KEY=your_dashscope_key   # 阿里云 DashScope API Key
+DEEPSEEK_API_KEY=your_deepseek_key     # DeepSeek API Key
+MINIMAX_API_KEY=your_minimax_key       # MiniMax API Key
+
+# 变量配置（可选）
+VarCustomVariable=custom_value         # 自定义变量
+EmojiPrompt=...                        # 表情包提示
 ```
 
 ### 前端 (.env.development)
 ```env
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=http://localhost:6005
 ```
 
 ## 快速开始
@@ -142,10 +144,8 @@ cd MeetWith
 ### 2. 后端启动
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8000
+python server.py
 ```
 
 ### 3. 前端启动
@@ -157,8 +157,8 @@ npm run dev
 
 ### 4. 访问应用
 - 前端: http://localhost:5173
-- 后端 API: http://localhost:8000
-- API 文档: http://localhost:8000/docs
+- 后端 API: http://localhost:6005
+- 管理面板: http://localhost:6005/admin_api/plugins
 
 ## 网络搜索功能说明
 
@@ -187,52 +187,135 @@ npm run dev
 - "最近的股价走势"
 - "最新的 iPhone 版本是什么？"
 
+## 插件系统
+
+### 插件结构
+
+每个插件目录包含：
+```
+plugin-name/
+├── plugin-manifest.json    # 插件清单文件
+├── plugin.py              # 插件主程序
+├── config.env             # 插件配置（可选）
+└── README.md              # 插件说明（可选）
+```
+
+### 插件清单 (plugin-manifest.json)
+
+```json
+{
+  "manifestVersion": "1.0.0",
+  "name": "PluginName",
+  "displayName": "插件显示名称",
+  "version": "1.0.0",
+  "description": "插件描述",
+  "pluginType": "synchronous",
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "CommandName",
+        "description": "命令描述",
+        "example": "使用示例"
+      }
+    ]
+  }
+}
+```
+
+### VCP 工具调用格式
+
+```
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」PluginName「末」
+param1:「始」value1「末」
+param2:「始」value2「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+### 管理插件
+
+通过管理面板 (Settings 页面) 可以：
+- 查看所有插件列表
+- 启用/禁用插件
+- 编辑插件配置
+- 编辑插件描述
+
+## 变量替换系统
+
+系统支持在提示词中使用变量占位符：
+
+### 时间变量
+- `{{Date}}` - 当前日期（如：2026年01月04日）
+- `{{Time}}` - 当前时间（如：16:30:00）
+- `{{Today}}` - 星期几
+- `{{Festival}}` - 农历日期
+
+### 插件变量
+- `{{VCPWeatherInfo}}` - 天气信息
+- `{{Image_Key}}` - 图片服务器密钥
+- `{{EmojiList}}` - 表情包列表
+- `{{插件名称}}` - 单个插件描述
+
+### 日记变量
+- `{{角色名日记本}}` - 读取指定角色的日记内容
+
+### 表情包变量
+- `{{表情包名称表情包}}` - 引用指定表情包
+
 ## API 接口
 
 ### 聊天接口
 ```http
-POST /api/chat/stream
+POST /v1/chat/completions
 Content-Type: application/json
 
 {
   "messages": [
     {"role": "user", "content": "今天有什么新闻？"}
   ],
-  "use_tools": true
+  "stream": true
 }
 ```
 
-### 网络搜索接口
+### 管理接口
 ```http
-POST /api/web-search/search
-Content-Type: application/json
+# 获取插件列表
+GET /admin_api/plugins
 
-{
-  "query": "搜索内容",
-  "max_results": 5
-}
-```
+# 获取主配置
+GET /admin_api/config/main
 
-### 网络搜索统计
-```http
-GET /api/web-search/usage
+# 保存主配置
+POST /admin_api/config/main
+
+# 切换插件状态
+POST /admin_api/plugins/{plugin_name}/toggle
+
+# 保存插件配置
+POST /admin_api/plugins/{plugin_name}/config
+
+# 重启服务器
+POST /admin_api/server/restart
 ```
 
 ## 开发说明
 
-### 添加新的 Agent 工具
+### 创建新插件
 
-1. 在 `backend/app/services/agent/tools/` 创建新的工具类
-2. 继承 `BaseTool` 并实现 `get_description()` 和 `run()` 方法
-3. 在 `AgentService` 中注册工具
+1. 在 `backend/plugins/` 创建新目录
+2. 创建 `plugin-manifest.json` 清单文件
+3. 编写插件主程序（支持 stdio 通信）
+4. 在管理面板中启用插件
+
+### 插件通信协议
+
+插件通过 stdin/stdout 与主程序通信：
+- 接收 JSON 格式的命令输入
+- 返回 JSON 格式的结果输出
 
 ### 同步/异步兼容性
 
-项目使用 uvloop (FastAPI 默认)，在同步上下文中调用异步代码时使用：
-- `ContentFetcher.batch_fetch_sync()`
-- `ContentExtractor.extract_content_sync()`
-
-这些方法会在新的事件循环中运行异步代码，避免与 uvloop 冲突。
+项目使用 uvloop (FastAPI 默认)，在同步上下文中调用异步代码时使用专门的同步包装方法。
 
 ## 许可证
 

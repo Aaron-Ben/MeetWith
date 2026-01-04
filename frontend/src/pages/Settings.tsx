@@ -1,10 +1,17 @@
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link } from "react-router-dom";
+import { ChevronLeft, Search, Trash2, Save, X } from "lucide-react";
 
 const API_BASE = "";
+
+interface EnvEntry {
+  key: string | null;
+  value: string;
+  isCommentOrEmpty: boolean;
+  isMultilineQuoted: boolean;
+  originalLineNumStart: number;
+  originalLineNumEnd: number;
+}
 
 interface Plugin {
   name: string;
@@ -12,9 +19,24 @@ interface Plugin {
     displayName?: string;
     name: string;
     description?: string;
+    version?: string;
+    capabilities?: {
+      invocationCommands?: Array<{
+        commandIdentifier: string;
+        command: string;
+        description: string;
+      }>;
+    };
   };
   enabled: boolean;
   configEnvContent?: string;
+}
+
+interface DailyNote {
+  name: string;
+  folderName: string;
+  lastModified: string;
+  preview: string;
 }
 
 interface ApiResponse<T> {
@@ -23,287 +45,796 @@ interface ApiResponse<T> {
   error?: string;
 }
 
+type NavSection = 'base-config' | 'daily-notes-manager' | string;
+
 export function Settings() {
-  const [mainConfig, setMainConfig] = useState("");
-  const [mainConfigStatus, setMainConfigStatus] = useState("");
+  // Navigation state
+  const [activeSection, setActiveSection] = useState<NavSection>('base-config');
+  const [activePlugin, setActivePlugin] = useState<string | null>(null);
+
+  // Base config state
+  const [baseConfigEntries, setBaseConfigEntries] = useState<EnvEntry[]>([]);
+  const [baseConfigLoading, setBaseConfigLoading] = useState(true);
+  const [baseConfigStatus, setBaseConfigStatus] = useState("");
+
+  // Plugins state
   const [plugins, setPlugins] = useState<Plugin[]>([]);
-  const [pluginStatus, setPluginStatus] = useState("");
-  const [editingDescriptions, setEditingDescriptions] = useState<Record<string, string>>({});
 
-  // 加载主配置
-  useEffect(() => {
-    loadMainConfig();
-  }, []);
+  // Plugin config state
+  const [pluginConfigEntries, setPluginConfigEntries] = useState<Record<string, EnvEntry[]>>({});
+  const [pluginEditingCommandDescriptions, setPluginEditingCommandDescriptions] = useState<Record<string, Record<string, string>>>({});
 
-  // 加载插件列表
+  // Daily notes state
+  const [noteFolders, setNoteFolders] = useState<string[]>([]);
+  const [activeFolder, setActiveFolder] = useState<string>("");
+  const [notes, setNotes] = useState<DailyNote[]>([]);
+  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
+  const [editingNote, setEditingNote] = useState<DailyNote | null>(null);
+  const [noteContent, setNoteContent] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [notesStatus, setNotesStatus] = useState("");
+
+  // Message state
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // Load initial data
   useEffect(() => {
+    loadBaseConfig();
     loadPlugins();
+    loadNoteFolders();
   }, []);
 
-  const loadMainConfig = async () => {
+  // Load notes when folder changes
+  useEffect(() => {
+    if (activeFolder) {
+      loadNotes(activeFolder);
+    }
+  }, [activeFolder]);
+
+  // Show message helper
+  const showMessage = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage(null), 3500);
+  };
+
+  // API helper
+  const apiFetch = async (url: string, options?: RequestInit) => {
+    const response = await fetch(url, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(error.message || error.error || `HTTP ${response.status}`);
+    }
+    return response.json();
+  };
+
+  // Parse .env content to entries
+  const parseEnvToList = (content: string): EnvEntry[] => {
+    const lines = content.split(/\r?\n/);
+    const entries: EnvEntry[] = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmedLine = line.trim();
+      const currentLineNum = i;
+
+      if (trimmedLine.startsWith('#') || trimmedLine === '') {
+        entries.push({
+          key: null,
+          value: line,
+          isCommentOrEmpty: true,
+          isMultilineQuoted: false,
+          originalLineNumStart: currentLineNum,
+          originalLineNumEnd: currentLineNum
+        });
+        i++;
+        continue;
+      }
+
+      const eqIndex = line.indexOf('=');
+      if (eqIndex === -1) {
+        entries.push({
+          key: null,
+          value: line,
+          isCommentOrEmpty: true,
+          isMultilineQuoted: false,
+          originalLineNumStart: currentLineNum,
+          originalLineNumEnd: currentLineNum
+        });
+        i++;
+        continue;
+      }
+
+      const key = line.substring(0, eqIndex).trim();
+      let valueString = line.substring(eqIndex + 1);
+
+      if (valueString.trim().startsWith("'")) {
+        let accumulatedValue: string;
+        let firstLineContent = valueString.substring(valueString.indexOf("'") + 1);
+
+        if (firstLineContent.endsWith("'") && !lines.slice(i + 1).some(l => l.trim().endsWith("'") && !l.trim().startsWith("'") && l.includes("='"))) {
+          accumulatedValue = firstLineContent.substring(0, firstLineContent.length - 1);
+          entries.push({
+            key,
+            value: accumulatedValue,
+            isCommentOrEmpty: false,
+            isMultilineQuoted: true,
+            originalLineNumStart: currentLineNum,
+            originalLineNumEnd: i
+          });
+        } else {
+          let multilineContent = [firstLineContent];
+          let endLineNum = i;
+          i++;
+          while (i < lines.length) {
+            const nextLine = lines[i];
+            multilineContent.push(nextLine);
+            endLineNum = i;
+            if (nextLine.trim().endsWith("'")) {
+              const lastContentLine = multilineContent.pop();
+              if (lastContentLine) {
+                multilineContent.push(lastContentLine.substring(0, lastContentLine.lastIndexOf("'")));
+              }
+              break;
+            }
+            i++;
+          }
+          accumulatedValue = multilineContent.join('\n');
+          entries.push({
+            key,
+            value: accumulatedValue,
+            isCommentOrEmpty: false,
+            isMultilineQuoted: true,
+            originalLineNumStart: currentLineNum,
+            originalLineNumEnd: endLineNum
+          });
+        }
+      } else {
+        entries.push({
+          key,
+          value: valueString.trim(),
+          isCommentOrEmpty: false,
+          isMultilineQuoted: false,
+          originalLineNumStart: currentLineNum,
+          originalLineNumEnd: currentLineNum
+        });
+      }
+      i++;
+    }
+    return entries;
+  };
+
+  // Build env string from entries
+  const buildEnvString = (entries: EnvEntry[]): string => {
+    return entries.map(entry => {
+      if (entry.isCommentOrEmpty) {
+        return entry.value;
+      }
+      if (entry.isMultilineQuoted || entry.value.includes('\n')) {
+        return `${entry.key}='${entry.value}'`;
+      }
+      return `${entry.key}=${entry.value}`;
+    }).join('\n');
+  };
+
+  // Load base config
+  const loadBaseConfig = async () => {
     try {
-      setMainConfigStatus("正在加载主配置...");
-      const response = await fetch(`${API_BASE}/admin_api/config/main`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: ApiResponse<string> = await response.json();
+      setBaseConfigLoading(true);
+      const data: ApiResponse<string> = await apiFetch(`${API_BASE}/admin_api/config/main`);
       if (data.content) {
-        setMainConfig(data.content);
-        setMainConfigStatus("主配置已加载");
+        setBaseConfigEntries(parseEnvToList(data.content));
       }
     } catch (error: any) {
-      setMainConfigStatus(`加载失败: ${error.message}`);
+      setBaseConfigStatus(`加载失败: ${error.message}`);
+    } finally {
+      setBaseConfigLoading(false);
     }
   };
 
-  const saveMainConfig = async () => {
+  // Save base config
+  const saveBaseConfig = async () => {
     try {
-      setMainConfigStatus("正在保存主配置...");
-      const response = await fetch(`${API_BASE}/admin_api/config/main`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: mainConfig }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: ApiResponse<string> = await response.json();
-      setMainConfigStatus(data.message || "主配置已保存");
-      await loadMainConfig();
-    } catch (error: any) {
-      setMainConfigStatus(`保存失败: ${error.message}`);
-    }
-  };
-
-  const loadPlugins = async () => {
-    try {
-      setPluginStatus("正在加载插件列表...");
-      const response = await fetch(`${API_BASE}/admin_api/plugins`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: Plugin[] = await response.json();
-      setPlugins(data);
-      setPluginStatus(data.length === 0 ? "未找到插件" : "插件列表已加载");
-    } catch (error: any) {
-      setPluginStatus(`加载失败: ${error.message}`);
-    }
-  };
-
-  const togglePlugin = async (pluginName: string, enable: boolean) => {
-    try {
-      setPluginStatus(`正在${enable ? "启用" : "禁用"}插件 ${pluginName}...`);
-      const response = await fetch(`${API_BASE}/admin_api/plugins/${pluginName}/toggle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enable }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: ApiResponse<string> = await response.json();
-      setPluginStatus(data.message || `插件已${enable ? "启用" : "禁用"}`);
-      await loadPlugins();
-    } catch (error: any) {
-      setPluginStatus(`操作失败: ${error.message}`);
-    }
-  };
-
-  const savePluginDescription = async (pluginName: string, description: string) => {
-    try {
-      setPluginStatus(`正在保存 ${pluginName} 的描述...`);
-      const response = await fetch(`${API_BASE}/admin_api/plugins/${pluginName}/description`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: ApiResponse<string> = await response.json();
-      setPluginStatus(data.message || "描述已保存");
-      setEditingDescriptions((prev) => {
-        const newState = { ...prev };
-        delete newState[pluginName];
-        return newState;
-      });
-      await loadPlugins();
-    } catch (error: any) {
-      setPluginStatus(`保存失败: ${error.message}`);
-    }
-  };
-
-  const savePluginConfig = async (pluginName: string, content: string) => {
-    try {
-      setPluginStatus(`正在保存 ${pluginName} 的配置...`);
-      const response = await fetch(`${API_BASE}/admin_api/plugins/${pluginName}/config`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      setBaseConfigStatus("正在保存...");
+      const content = buildEnvString(baseConfigEntries);
+      await apiFetch(`${API_BASE}/admin_api/config/main`, {
+        method: 'POST',
         body: JSON.stringify({ content }),
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: ApiResponse<string> = await response.json();
-      setPluginStatus(data.message || "插件配置已保存");
+      showMessage('全局配置已保存！部分更改可能需要重启服务生效。', 'success');
+      await loadBaseConfig();
     } catch (error: any) {
-      setPluginStatus(`保存失败: ${error.message}`);
+      setBaseConfigStatus(`保存失败: ${error.message}`);
+      showMessage(`保存失败: ${error.message}`, 'error');
     }
+  };
+
+  // Load plugins
+  const loadPlugins = async () => {
+    try {
+      const data: Plugin[] = await apiFetch(`${API_BASE}/admin_api/plugins`);
+      setPlugins(data);
+
+      // Parse plugin configs
+      const configs: Record<string, EnvEntry[]> = {};
+      for (const plugin of data) {
+        if (plugin.configEnvContent) {
+          configs[plugin.name] = parseEnvToList(plugin.configEnvContent);
+        }
+      }
+      setPluginConfigEntries(configs);
+    } catch (error: any) {
+      showMessage(`加载插件失败: ${error.message}`, 'error');
+    }
+  };
+
+  // Save plugin config
+  const savePluginConfig = async (pluginName: string) => {
+    try {
+      const entries = pluginConfigEntries[pluginName] || [];
+      const content = buildEnvString(entries);
+      await apiFetch(`${API_BASE}/admin_api/plugins/${pluginName}/config`, {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      });
+      showMessage('插件配置已保存', 'success');
+    } catch (error: any) {
+      showMessage(`保存失败: ${error.message}`, 'error');
+    }
+  };
+
+  // Save command description
+  const saveCommandDescription = async (pluginName: string, commandIdentifier: string, description: string) => {
+    try {
+      await apiFetch(`${API_BASE}/admin_api/plugins/${pluginName}/commands/${commandIdentifier}/description`, {
+        method: 'POST',
+        body: JSON.stringify({ description }),
+      });
+      setPluginEditingCommandDescriptions(prev => {
+        const newState = { ...prev };
+        if (newState[pluginName]) {
+          delete newState[pluginName][commandIdentifier];
+        }
+        return newState;
+      });
+      showMessage('指令描述已保存', 'success');
+    } catch (error: any) {
+      showMessage(`保存失败: ${error.message}`, 'error');
+    }
+  };
+
+  // Update config entry value
+  const updateConfigValue = (entries: EnvEntry[], index: number, newValue: string) => {
+    const newEntries = [...entries];
+    newEntries[index] = { ...newEntries[index], value: newValue };
+    return newEntries;
+  };
+
+  // Daily Notes functions
+  const loadNoteFolders = async () => {
+    try {
+      const data: ApiResponse<{ folders: string[] }> = await apiFetch(`${API_BASE}/admin_api/dailynotes/folders`);
+      if (data.content?.folders) {
+        setNoteFolders(data.content.folders);
+        if (data.content.folders.length > 0 && !activeFolder) {
+          setActiveFolder(data.content.folders[0]);
+        }
+      }
+    } catch (error: any) {
+      setNotesStatus(`加载文件夹失败: ${error.message}`);
+    }
+  };
+
+  const loadNotes = async (folder: string) => {
+    try {
+      const data: ApiResponse<{ notes: DailyNote[] }> = await apiFetch(`${API_BASE}/admin_api/dailynotes/folder/${folder}`);
+      if (data.content?.notes) {
+        setNotes(data.content.notes);
+      }
+    } catch (error: any) {
+      setNotesStatus(`加载日记失败: ${error.message}`);
+    }
+  };
+
+  const loadNoteContent = async (folder: string, fileName: string) => {
+    try {
+      const data: ApiResponse<{ content: string }> = await apiFetch(`${API_BASE}/admin_api/dailynotes/note/${folder}/${fileName}`);
+      if (data.content?.content !== undefined) {
+        setNoteContent(data.content.content);
+        setEditingNote({ name: fileName, folderName: folder, lastModified: '', preview: '' });
+      }
+    } catch (error: any) {
+      showMessage(`加载日记内容失败: ${error.message}`, 'error');
+    }
+  };
+
+  const saveNoteContent = async () => {
+    if (!editingNote) return;
+    try {
+      await apiFetch(`${API_BASE}/admin_api/dailynotes/note/${editingNote.folderName}/${editingNote.name}`, {
+        method: 'POST',
+        body: JSON.stringify({ content: noteContent }),
+      });
+      showMessage('日记已保存', 'success');
+      setEditingNote(null);
+      await loadNotes(editingNote.folderName);
+    } catch (error: any) {
+      showMessage(`保存失败: ${error.message}`, 'error');
+    }
+  };
+
+  const deleteNotes = async () => {
+    if (selectedNotes.size === 0) return;
+    try {
+      const notesToDelete = Array.from(selectedNotes).map(key => {
+        const [folder, file] = key.split('/');
+        return { folder, file };
+      });
+      await apiFetch(`${API_BASE}/admin_api/dailynotes/delete-batch`, {
+        method: 'POST',
+        body: JSON.stringify({ notesToDelete }),
+      });
+      showMessage(`已删除 ${selectedNotes.size} 条日记`, 'success');
+      setSelectedNotes(new Set());
+      await loadNotes(activeFolder);
+    } catch (error: any) {
+      showMessage(`删除失败: ${error.message}`, 'error');
+    }
+  };
+
+  const searchNotes = async () => {
+    if (!searchTerm.trim()) return;
+    try {
+      const folderParam = activeFolder ? `?folder=${activeFolder}` : '';
+      const data: ApiResponse<{ notes: DailyNote[] }> = await apiFetch(`${API_BASE}/admin_api/dailynotes/search?term=${encodeURIComponent(searchTerm)}${folderParam}`);
+      if (data.content?.notes) {
+        setNotes(data.content.notes);
+      }
+    } catch (error: any) {
+      showMessage(`搜索失败: ${error.message}`, 'error');
+    }
+  };
+
+  const restartServer = async () => {
+    if (!confirm('确定要重启服务器吗？')) return;
+    try {
+      await apiFetch(`${API_BASE}/admin_api/server/restart`, { method: 'POST' });
+      showMessage('服务器重启命令已发送', 'success');
+    } catch (error: any) {
+      showMessage(`重启失败: ${error.message}`, 'error');
+    }
+  };
+
+  // Render config entry form group
+  const renderConfigEntry = (
+    entries: EnvEntry[],
+    index: number,
+    onUpdate: (index: number, value: string) => void,
+    onDelete?: (index: number) => void
+  ) => {
+    const entry = entries[index];
+    if (entry.isCommentOrEmpty) {
+      return (
+        <div key={index} className="text-sm text-gray-500 font-mono">
+          {entry.value || '(空行)'}
+        </div>
+      );
+    }
+
+    const inferredType = /^(true|false)$/i.test(entry.value) ? 'boolean' :
+      !isNaN(parseFloat(entry.value)) && isFinite(parseFloat(entry.value)) ? 'number' : 'text';
+
+    return (
+      <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <label className="block mb-2">
+          <span className="text-gray-800 font-semibold">{entry.key}</span>
+        </label>
+        {inferredType === 'boolean' ? (
+          <div className="flex items-center gap-3">
+            <label className="relative inline-block w-12 h-6">
+              <input
+                type="checkbox"
+                checked={entry.value === 'true'}
+                onChange={(e) => onUpdate(index, e.target.checked ? 'true' : 'false')}
+                className="sr-only peer"
+              />
+              <div className="absolute inset-0 bg-gray-300 rounded-full transition-colors peer-checked:bg-blue-500 cursor-pointer" />
+              <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-6 shadow" />
+            </label>
+            <span className="text-sm text-gray-600">
+              {entry.value === 'true' ? '启用' : '禁用'}
+            </span>
+          </div>
+        ) : (
+          <textarea
+            value={entry.value}
+            onChange={(e) => onUpdate(index, e.target.value)}
+            rows={(entry.isMultilineQuoted || entry.value.includes('\n')) ? 4 : 1}
+            className="w-full bg-white text-gray-900 p-3 rounded border border-gray-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-mono text-sm resize-y"
+          />
+        )}
+        {onDelete && (
+          <button
+            onClick={() => onDelete(index)}
+            className="mt-2 px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"
+          >
+            删除
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  // Render main content
+  const renderMainContent = () => {
+    if (activeSection === 'base-config') {
+      return (
+        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <h2 className="text-2xl font-bold text-blue-600 mb-6 pb-3 border-b-2 border-blue-600">
+            全局基础配置 (config.env)
+          </h2>
+          {baseConfigLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full" />
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {baseConfigEntries.map((_, index) =>
+                renderConfigEntry(
+                  baseConfigEntries,
+                  index,
+                  (i, v) => setBaseConfigEntries(updateConfigValue(baseConfigEntries, i, v))
+                )
+              )}
+              <button
+                onClick={saveBaseConfig}
+                className="w-full py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-colors"
+              >
+                保存全局配置
+              </button>
+              {baseConfigStatus && (
+                <p className="text-sm text-center text-gray-600">{baseConfigStatus}</p>
+              )}
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    if (activeSection === 'daily-notes-manager') {
+      return (
+        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <h2 className="text-2xl font-bold text-blue-600 mb-6 pb-3 border-b-2 border-blue-600">
+            日记管理
+          </h2>
+          {editingNote ? (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-semibold text-gray-700">编辑日记</h3>
+                <button
+                  onClick={() => setEditingNote(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <textarea
+                value={noteContent}
+                onChange={(e) => setNoteContent(e.target.value)}
+                className="w-full min-h-[300px] bg-white text-gray-900 p-4 rounded-lg border border-gray-300 focus:border-blue-500 focus:outline-none resize-y font-mono"
+                spellCheck={false}
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={saveNoteContent}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  保存日记
+                </button>
+                <button
+                  onClick={() => setEditingNote(null)}
+                  className="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors"
+                >
+                  取消编辑
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-5">
+              {/* Folders sidebar */}
+              <div className="w-48 flex-shrink-0 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-700 mb-3 pb-2 border-b border-dashed border-gray-300">文件夹</h3>
+                <ul className="space-y-1">
+                  {noteFolders.map(folder => (
+                    <li
+                      key={folder}
+                      onClick={() => setActiveFolder(folder)}
+                      className={`px-3 py-2 rounded cursor-pointer transition-colors ${
+                        activeFolder === folder
+                          ? 'bg-blue-100 text-blue-700 font-semibold'
+                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      }`}
+                    >
+                      {folder}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Notes content */}
+              <div className="flex-1 space-y-4">
+                {/* Toolbar */}
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="search"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && searchNotes()}
+                      placeholder="搜索日记..."
+                      className="w-full pl-10 pr-4 py-2 bg-white text-gray-900 rounded border border-gray-300 focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    onClick={deleteNotes}
+                    disabled={selectedNotes.size === 0}
+                    className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    批量删除 ({selectedNotes.size})
+                  </button>
+                </div>
+
+                {/* Notes grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {notes.map(note => {
+                    const key = `${note.folderName}/${note.name}`;
+                    const isSelected = selectedNotes.has(key);
+                    return (
+                      <div
+                        key={key}
+                        onClick={() => loadNoteContent(note.folderName, note.name)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setSelectedNotes(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(key)) {
+                              newSet.delete(key);
+                            } else {
+                              newSet.add(key);
+                            }
+                            return newSet;
+                          });
+                        }}
+                        className={`bg-white p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md hover:-translate-y-1 ${
+                          isSelected
+                            ? 'border-l-4 border-l-blue-500 shadow-md shadow-blue-500/20'
+                            : 'border-gray-200'
+                        }`}
+                      >
+                        <h4 className="font-semibold text-gray-800 mb-2 break-all">{note.name}</h4>
+                        <p className="text-sm text-gray-600 line-clamp-3 mb-3 min-h-[60px]">{note.preview}</p>
+                        <p className="text-xs text-gray-400">{new Date(note.lastModified).toLocaleString()}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {notesStatus && <p className="text-sm text-center text-gray-600">{notesStatus}</p>}
+              </div>
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    // Plugin config
+    if (activePlugin) {
+      const plugin = plugins.find(p => p.name === activePlugin);
+      if (!plugin) return null;
+
+      const entries = pluginConfigEntries[activePlugin] || [];
+      const editingCommands = pluginEditingCommandDescriptions[activePlugin] || {};
+
+      return (
+        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <h2 className="text-2xl font-bold text-blue-600 mb-6 pb-3 border-b-2 border-blue-600">
+            {plugin.manifest.displayName || plugin.name}
+          </h2>
+
+          {/* Description */}
+          {plugin.manifest.description && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-gray-600">{plugin.manifest.description}</p>
+            </div>
+          )}
+
+          {/* Config */}
+          {entries.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-700 mb-4 pb-2 border-b border-dashed border-gray-300">插件配置 (config.env)</h3>
+              <div className="space-y-4">
+                {entries.map((_, index) =>
+                  renderConfigEntry(
+                    entries,
+                    index,
+                    (i, v) => setPluginConfigEntries(prev => ({
+                      ...prev,
+                      [activePlugin]: updateConfigValue(prev[activePlugin] || [], i, v)
+                    }))
+                  )
+                )}
+              </div>
+              <button
+                onClick={() => savePluginConfig(activePlugin)}
+                className="mt-4 w-full py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-colors"
+              >
+                保存插件配置
+              </button>
+            </div>
+          )}
+
+          {/* Invocation Commands */}
+          {plugin.manifest.capabilities?.invocationCommands && plugin.manifest.capabilities.invocationCommands.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <h3 className="text-xl font-semibold text-gray-700 mb-4 pb-2 border-b border-dashed border-gray-300">AI 指令描述</h3>
+              <div className="space-y-6">
+                {plugin.manifest.capabilities.invocationCommands.map((cmd, idx) => {
+                  const isEditing = editingCommands.hasOwnProperty(cmd.commandIdentifier);
+                  return (
+                    <div key={idx} className="bg-gray-50 p-5 rounded-lg border border-gray-200">
+                      <h4 className="text-lg font-semibold text-gray-800 mb-2">{cmd.commandIdentifier}</h4>
+                      <p className="text-sm text-gray-500 mb-3">指令: {cmd.command}</p>
+                      {isEditing ? (
+                        <div className="space-y-3">
+                          <textarea
+                            value={editingCommands[cmd.commandIdentifier]}
+                            onChange={(e) => setPluginEditingCommandDescriptions(prev => ({
+                              ...prev,
+                              [activePlugin]: { ...prev[activePlugin], [cmd.commandIdentifier]: e.target.value }
+                            }))}
+                            rows={4}
+                            className="w-full bg-white text-gray-900 p-3 rounded border border-gray-300 focus:border-blue-500 focus:outline-none resize-y"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveCommandDescription(activePlugin, cmd.commandIdentifier, editingCommands[cmd.commandIdentifier])}
+                              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                            >
+                              保存描述
+                            </button>
+                            <button
+                              onClick={() => setPluginEditingCommandDescriptions(prev => {
+                                const newState = { ...prev };
+                                if (newState[activePlugin]) {
+                                  delete newState[activePlugin][cmd.commandIdentifier];
+                                }
+                                return newState;
+                              })}
+                              className="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-start">
+                          <p className="text-gray-600 flex-1 mr-4">{cmd.description}</p>
+                          <button
+                            onClick={() => setPluginEditingCommandDescriptions(prev => ({
+                              ...prev,
+                              [activePlugin]: { ...prev[activePlugin], [cmd.commandIdentifier]: cmd.description }
+                            }))}
+                            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm whitespace-nowrap"
+                          >
+                            编辑描述
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    return null;
   };
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      {/* 返回按钮 */}
-      <Link to="/" className="inline-block mb-4">
-        <Button variant="outline" size="sm">
-          ← 返回聊天
-        </Button>
-      </Link>
+    <div className="min-h-screen bg-gray-50 pt-[52px]">
+      {/* Top bar */}
+      <header className="fixed top-0 left-0 right-0 z-50 h-[52px] bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
+        <div className="h-full max-w-[1600px] mx-auto px-5 flex justify-between items-center">
+          <span className="text-xl font-semibold text-blue-600">MeetWith</span>
+          <button
+            onClick={restartServer}
+            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-semibold"
+          >
+            重启服务器
+          </button>
+        </div>
+      </header>
 
-      <div className="max-w-5xl mx-auto space-y-8">
-        <h1 className="text-3xl font-bold text-center">服务器管理面板</h1>
+      {/* Message popup */}
+      {message && (
+        <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 px-7 py-4 rounded-lg shadow-lg text-white font-medium transition-all duration-300 z-[1001] ${
+          message.type === 'success' ? 'bg-green-500' :
+          message.type === 'error' ? 'bg-red-500' : 'bg-gray-700'
+        }`}>
+          {message.text}
+        </div>
+      )}
 
-        {/* 主配置 */}
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4 pb-2 border-b">主配置 (config.env)</h2>
-          <Textarea
-            value={mainConfig}
-            onChange={(e) => setMainConfig(e.target.value)}
-            rows={15}
-            className="font-mono text-sm mb-4"
-          />
-          <div className="flex items-center gap-4">
-            <Button onClick={saveMainConfig}>保存主配置</Button>
-            <span className="text-sm text-muted-foreground">{mainConfigStatus}</span>
-          </div>
-        </section>
+      {/* Main container */}
+      <div className="flex max-w-[1600px] mx-auto my-5 bg-white rounded-xl shadow-md overflow-hidden min-h-[calc(100vh-62px)]">
+        {/* Sidebar */}
+        <aside className="w-[280px] flex-shrink-0 bg-gray-50 p-6 border-r border-gray-200 overflow-y-auto max-h-[calc(100vh-62px)]">
+          <h1 className="text-2xl font-bold text-blue-600 text-center mb-8 tracking-wide">配置中心</h1>
+          <nav>
+            <ul className="space-y-2">
+              <li>
+                <button
+                  onClick={() => { setActiveSection('base-config'); setActivePlugin(null); }}
+                  className={`w-full text-left px-5 py-3 rounded-lg transition-all duration-200 font-medium ${
+                    activeSection === 'base-config' && !activePlugin
+                      ? 'bg-blue-100 text-blue-700 shadow-md border-l-4 border-blue-600'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  全局基础配置
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => { setActiveSection('daily-notes-manager'); setActivePlugin(null); }}
+                  className={`w-full text-left px-5 py-3 rounded-lg transition-all duration-200 font-medium ${
+                    activeSection === 'daily-notes-manager'
+                      ? 'bg-blue-100 text-blue-700 shadow-md border-l-4 border-blue-600'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  日记管理
+                </button>
+              </li>
+              {plugins.map(plugin => (
+                <li key={plugin.name}>
+                  <button
+                    onClick={() => { setActiveSection(plugin.name); setActivePlugin(plugin.name); }}
+                    className={`w-full text-left px-5 py-3 rounded-lg transition-all duration-200 font-medium ${
+                      activePlugin === plugin.name
+                        ? 'bg-blue-100 text-blue-700 shadow-md border-l-4 border-blue-600'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    {plugin.manifest.displayName || plugin.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
-        {/* 插件管理 */}
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4 pb-2 border-b">插件管理</h2>
-          <p className="text-sm text-muted-foreground mb-4">{pluginStatus}</p>
+          {/* Back button */}
+          <Link to="/" className="mt-6 block">
+            <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
+              <ChevronLeft className="w-4 h-4" />
+              返回聊天
+            </button>
+          </Link>
+        </aside>
 
-          <ScrollArea className="h-[600px] pr-4">
-            <div className="space-y-4">
-              {plugins.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">未找到任何插件</p>
-              ) : (
-                plugins.map((plugin) => {
-                  const isEditing = editingDescriptions.hasOwnProperty(plugin.name);
-                  const currentDescription = isEditing
-                    ? editingDescriptions[plugin.name]
-                    : plugin.manifest.description || "";
-
-                  return (
-                    <div
-                      key={plugin.name}
-                      className="rounded-lg border bg-muted/30 p-4 space-y-3"
-                    >
-                      {/* 插件标题和状态 */}
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg">
-                            {plugin.manifest.displayName || plugin.name}
-                            <span className="text-sm font-normal text-muted-foreground ml-2">
-                              ({plugin.name})
-                            </span>
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            状态:{" "}
-                            <span
-                              className={
-                                plugin.enabled ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                              }
-                            >
-                              {plugin.enabled ? "已启用" : "已禁用"}
-                            </span>
-                          </p>
-                        </div>
-                        <Button
-                          variant={plugin.enabled ? "destructive" : "default"}
-                          size="sm"
-                          onClick={() => togglePlugin(plugin.name, !plugin.enabled)}
-                        >
-                          {plugin.enabled ? "禁用插件" : "启用插件"}
-                        </Button>
-                      </div>
-
-                      {/* 描述编辑 */}
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium">描述:</p>
-                        {isEditing ? (
-                          <div className="space-y-2">
-                            <Textarea
-                              value={currentDescription}
-                              onChange={(e) =>
-                                setEditingDescriptions((prev) => ({
-                                  ...prev,
-                                  [plugin.name]: e.target.value,
-                                }))
-                              }
-                              rows={2}
-                              className="text-sm"
-                            />
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => savePluginDescription(plugin.name, currentDescription)}
-                              >
-                                保存描述
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setEditingDescriptions((prev) => {
-                                    const newState = { ...prev };
-                                    delete newState[plugin.name];
-                                    return newState;
-                                  });
-                                }}
-                              >
-                                取消编辑
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm text-muted-foreground flex-1">
-                              {plugin.manifest.description || "(无描述)"}
-                            </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                setEditingDescriptions((prev) => ({
-                                  ...prev,
-                                  [plugin.name]: plugin.manifest.description || "",
-                                }))
-                              }
-                            >
-                              编辑描述
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 插件配置 */}
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium">插件配置 (config.env)</h4>
-                        <Textarea
-                          defaultValue={plugin.configEnvContent || ""}
-                          rows={5}
-                          placeholder="此插件没有独立的 config.env 文件"
-                          className="font-mono text-sm"
-                        />
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={(e) => {
-                            const textarea = (e.target as HTMLElement)
-                              .previousElementSibling as HTMLTextAreaElement;
-                            if (textarea) savePluginConfig(plugin.name, textarea.value);
-                          }}
-                        >
-                          保存插件配置
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </ScrollArea>
-        </section>
+        {/* Main content */}
+        <main className="flex-1 p-10 overflow-y-auto max-h-[calc(100vh-62px)]">
+          {renderMainContent()}
+        </main>
       </div>
     </div>
   );

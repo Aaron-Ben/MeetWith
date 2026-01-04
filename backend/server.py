@@ -576,6 +576,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Import routes after app is created to register them
+import routes.setting
+routes.setting.register_routes(app)
+
 @app.middleware("http")
 async def logging_middleware(request: Request, call_next):
     """请求日志中间件"""
