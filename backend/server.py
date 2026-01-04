@@ -136,7 +136,9 @@ async def replace_common_variables(text: Any) -> Any:
     # 农历日期
     try:
         from zhdate import ZhDate
-        lunar = ZhDate.from_datetime(now)
+        # zhdate 库不支持 offset-aware datetime，需要转换为 offset-naive
+        now_naive = now.replace(tzinfo=None)
+        lunar = ZhDate.from_datetime(now_naive)
         year_name = lunar.chinesestate.replace('年', '')
         zodiac = lunar.chinese_era[0]  # 生肖
         festival_info = f"{year_name}{zodiac}年{lunar.chinesedate}"
