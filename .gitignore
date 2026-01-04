@@ -17,3 +17,4 @@ upload
 
 backend/config.env
 backend/DebugLog
+backend/dailynote

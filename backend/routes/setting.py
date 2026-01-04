@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent.parent
 PLUGIN_DIR = BASE_DIR / 'plugins'
-DAILY_NOTE_ROOT = BASE_DIR.parent / 'dailynote'
+DAILY_NOTE_ROOT = BASE_DIR / 'dailynote'
 MANIFEST_FILE = 'plugin-manifest.json'
 BLOCKED_EXTENSION = '.block'
 PREVIEW_LENGTH = 100
@@ -469,6 +469,7 @@ def register_routes(app: FastAPI):
 
                 notes.append({
                     'name': file_path.name,
+                    'folderName': folder_name,
                     'lastModified': datetime.fromtimestamp(stats.st_mtime).isoformat(),
                     'preview': preview
                 })

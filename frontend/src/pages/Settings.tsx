@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, Search, Trash2, Save, X } from "lucide-react";
+import { ChevronLeft, Search, Trash2, Save, X, FileText } from "lucide-react";
 
 const API_BASE = "";
 
@@ -286,6 +286,20 @@ export function Settings() {
     }
   };
 
+  // Toggle plugin enable/disable
+  const togglePlugin = async (pluginName: string, enable: boolean) => {
+    try {
+      await apiFetch(`${API_BASE}/admin_api/plugins/${pluginName}/toggle`, {
+        method: 'POST',
+        body: JSON.stringify({ enable }),
+      });
+      showMessage(`插件已${enable ? '启用' : '禁用'}，建议重启服务器以完全生效`, 'success');
+      await loadPlugins();
+    } catch (error: any) {
+      showMessage(`操作失败: ${error.message}`, 'error');
+    }
+  };
+
   // Save command description
   const saveCommandDescription = async (pluginName: string, commandIdentifier: string, description: string) => {
     try {
@@ -316,11 +330,11 @@ export function Settings() {
   // Daily Notes functions
   const loadNoteFolders = async () => {
     try {
-      const data: ApiResponse<{ folders: string[] }> = await apiFetch(`${API_BASE}/admin_api/dailynotes/folders`);
-      if (data.content?.folders) {
-        setNoteFolders(data.content.folders);
-        if (data.content.folders.length > 0 && !activeFolder) {
-          setActiveFolder(data.content.folders[0]);
+      const data: { folders: string[] } = await apiFetch(`${API_BASE}/admin_api/dailynotes/folders`);
+      if (data.folders) {
+        setNoteFolders(data.folders);
+        if (data.folders.length > 0 && !activeFolder) {
+          setActiveFolder(data.folders[0]);
         }
       }
     } catch (error: any) {
@@ -330,9 +344,9 @@ export function Settings() {
 
   const loadNotes = async (folder: string) => {
     try {
-      const data: ApiResponse<{ notes: DailyNote[] }> = await apiFetch(`${API_BASE}/admin_api/dailynotes/folder/${folder}`);
-      if (data.content?.notes) {
-        setNotes(data.content.notes);
+      const data: { notes: DailyNote[] } = await apiFetch(`${API_BASE}/admin_api/dailynotes/folder/${folder}`);
+      if (data.notes) {
+        setNotes(data.notes);
       }
     } catch (error: any) {
       setNotesStatus(`加载日记失败: ${error.message}`);
@@ -389,9 +403,9 @@ export function Settings() {
     if (!searchTerm.trim()) return;
     try {
       const folderParam = activeFolder ? `?folder=${activeFolder}` : '';
-      const data: ApiResponse<{ notes: DailyNote[] }> = await apiFetch(`${API_BASE}/admin_api/dailynotes/search?term=${encodeURIComponent(searchTerm)}${folderParam}`);
-      if (data.content?.notes) {
-        setNotes(data.content.notes);
+      const data: { notes: DailyNote[] } = await apiFetch(`${API_BASE}/admin_api/dailynotes/search?term=${encodeURIComponent(searchTerm)}${folderParam}`);
+      if (data.notes) {
+        setNotes(data.notes);
       }
     } catch (error: any) {
       showMessage(`搜索失败: ${error.message}`, 'error');
@@ -547,7 +561,7 @@ export function Settings() {
             <div className="flex gap-5">
               {/* Folders sidebar */}
               <div className="w-48 flex-shrink-0 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-700 mb-3 pb-2 border-b border-dashed border-gray-300">文件夹</h3>
+                <h3 className="text-lg font-semibold text-gray-700 mb-3 pb-2 border-b border-dashed border-gray-300">角色日记</h3>
                 <ul className="space-y-1">
                   {noteFolders.map(folder => (
                     <li
@@ -591,39 +605,46 @@ export function Settings() {
                 </div>
 
                 {/* Notes grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {notes.map(note => {
-                    const key = `${note.folderName}/${note.name}`;
-                    const isSelected = selectedNotes.has(key);
-                    return (
-                      <div
-                        key={key}
-                        onClick={() => loadNoteContent(note.folderName, note.name)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          setSelectedNotes(prev => {
-                            const newSet = new Set(prev);
-                            if (newSet.has(key)) {
-                              newSet.delete(key);
-                            } else {
-                              newSet.add(key);
-                            }
-                            return newSet;
-                          });
-                        }}
-                        className={`bg-white p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md hover:-translate-y-1 ${
-                          isSelected
-                            ? 'border-l-4 border-l-blue-500 shadow-md shadow-blue-500/20'
-                            : 'border-gray-200'
-                        }`}
-                      >
-                        <h4 className="font-semibold text-gray-800 mb-2 break-all">{note.name}</h4>
-                        <p className="text-sm text-gray-600 line-clamp-3 mb-3 min-h-[60px]">{note.preview}</p>
-                        <p className="text-xs text-gray-400">{new Date(note.lastModified).toLocaleString()}</p>
-                      </div>
-                    );
-                  })}
-                </div>
+                {notes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                    <FileText className="w-16 h-16 mb-4 opacity-50" />
+                    <p className="text-lg">当前角色中没有日记文件</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {notes.map(note => {
+                      const key = `${note.folderName}/${note.name}`;
+                      const isSelected = selectedNotes.has(key);
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => loadNoteContent(note.folderName, note.name)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setSelectedNotes(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(key)) {
+                                newSet.delete(key);
+                              } else {
+                                newSet.add(key);
+                              }
+                              return newSet;
+                            });
+                          }}
+                          className={`bg-white p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md hover:-translate-y-1 ${
+                            isSelected
+                              ? 'border-l-4 border-l-blue-500 shadow-md shadow-blue-500/20'
+                              : 'border-gray-200'
+                          }`}
+                        >
+                          <h4 className="font-semibold text-gray-800 mb-2 break-all">{note.name}</h4>
+                          <p className="text-sm text-gray-600 line-clamp-3 mb-3 min-h-[60px]">{note.preview}</p>
+                          <p className="text-xs text-gray-400">{new Date(note.lastModified).toLocaleString()}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {notesStatus && <p className="text-sm text-center text-gray-600">{notesStatus}</p>}
               </div>
@@ -643,9 +664,29 @@ export function Settings() {
 
       return (
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <h2 className="text-2xl font-bold text-blue-600 mb-6 pb-3 border-b-2 border-blue-600">
-            {plugin.manifest.displayName || plugin.name}
-          </h2>
+          <div className="flex justify-between items-center mb-6 pb-3 border-b-2 border-blue-600">
+            <h2 className="text-2xl font-bold text-blue-600">
+              {plugin.manifest.displayName || plugin.name}
+            </h2>
+            <div className="flex items-center gap-3">
+              <span className={`text-sm font-medium ${plugin.enabled ? 'text-green-600' : 'text-gray-500'}`}>
+                {plugin.enabled ? '已启用' : '已禁用'}
+              </span>
+              <button
+                onClick={() => togglePlugin(plugin.name, !plugin.enabled)}
+                className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  plugin.enabled ? 'bg-green-500' : 'bg-gray-300'
+                }`}
+                title={plugin.enabled ? '点击禁用插件' : '点击启用插件'}
+              >
+                <span
+                  className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${
+                    plugin.enabled ? 'translate-x-7' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
 
           {/* Description */}
           {plugin.manifest.description && (
