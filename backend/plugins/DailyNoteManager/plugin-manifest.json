@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "DailyNoteManager",
+  "displayName": "日记整理器",
+  "version": "1.0.0",
+  "description": "接收AI输出的日记内容，并将其保存为独立的txt文件。",
+  "author": "System",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "python",
+    "command": "python daily_note_manager.py"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 10000
+  },
+  "capabilities": {
+    "systemPromptPlaceholders": [],
+    "invocationCommands": [
+      {
+        "commandIdentifier": "DailyNoteManager",
+        "description": "接收并处理AI输出的日记内容，将每条日记保存为独立文件。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」DailyNoteManager「末」\ncommand: 「始」文件名1.txt\n日记内容1\n文件名2.txt\n日记内容2\n「末」<<<[END_TOOL_REQUEST]>>>"
+      }
+    ],
+    "responseFormatToAI": "###日记处理结果：\n{result}\n###"
+  },
+  "dependencies": {
+    "python": ">=3.7",
+    "libraries": []
+  }
+}
