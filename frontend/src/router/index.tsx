@@ -1,31 +1,61 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { PPTHome } from '@/pages/PPT/Home';
-import { OutlineEditor } from '@/pages/PPT/OutlineEditor';
-import { DetailEditor } from '@/pages/PPT/DetailEditor';
-import { Preview } from '@/pages/PPT/Preview';
+import { lazy, Suspense } from 'react';
+import { Settings } from '@/pages/Settings';
+import { ChatApp } from '@/pages/Chat';
 
-// 导入原有组件 - 简单的占位符，因为实际路由需要配合App.tsx使用
+// 懒加载 PPT 相关页面
+const PPTHome = lazy(() => import('@/pages/PPT/Home').then(m => ({ default: m.PPTHome })));
+const OutlineEditor = lazy(() => import('@/pages/PPT/OutlineEditor').then(m => ({ default: m.OutlineEditor })));
+const DetailEditor = lazy(() => import('@/pages/PPT/DetailEditor').then(m => ({ default: m.DetailEditor })));
+const Preview = lazy(() => import('@/pages/PPT/Preview').then(m => ({ default: m.Preview })));
+
+// 加载中组件
+const LoadingFallback = () => (
+  <div className="h-screen flex items-center justify-center">
+    <div className="text-gray-600">加载中...</div>
+  </div>
+);
 
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <div>{/* 原有的App内容 */}</div>,
+    element: <ChatApp />,
+  },
+  {
+    path: '/settings',
+    element: <Settings />,
   },
   {
     path: '/ppt',
-    element: <PPTHome />,
+    element: (
+      <Suspense fallback={<LoadingFallback />}>
+        <PPTHome />
+      </Suspense>
+    ),
   },
   {
     path: '/ppt/outline/:projectId',
-    element: <OutlineEditor />,
+    element: (
+      <Suspense fallback={<LoadingFallback />}>
+        <OutlineEditor />
+      </Suspense>
+    ),
   },
   {
     path: '/ppt/detail/:projectId',
-    element: <DetailEditor />,
+    element: (
+      <Suspense fallback={<LoadingFallback />}>
+        <DetailEditor />
+      </Suspense>
+    ),
   },
   {
     path: '/ppt/preview/:projectId',
-    element: <Preview />,
+    element: (
+      <Suspense fallback={<LoadingFallback />}>
+        <Preview />
+      </Suspense>
+    ),
   },
 ]);
 

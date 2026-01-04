@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "DailyNoteWrite",
+  "version": "1.0.0",
+  "displayName": "日记写入",
+  "description": "将日记内容写入到指定角色的日记本中。需要提供角色名称、日期和内容。",
+  "author": "System",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "python",
+    "command": "python daily_note_write.py"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 10000
+  },
+  "capabilities": {
+    "systemPromptPlaceholders": [],
+    "invocationCommands": [
+      {
+        "commandIdentifier": "DailyNoteWriteRequest",
+        "description": "要写入日记内容，请在回复的末尾使用以下格式发出请求：```Tool\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DailyNoteWrite「末」,\nmaidName:「始」角色名称「末」,\ndateString:「始」日期字符串（如：2025.01.03）「末」,\ncontentText:「始」日记内容「末」\n<<<[END_TOOL_REQUEST]>>>\n```",
+        "example": "```text\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DailyNoteWrite「末」,\nmaidName:「始」Alice「末」,\ndateString:「始」2025.01.03「末」,\ncontentText:「始」今天天气很好，心情也不错。「末」\n<<<[END_TOOL_REQUEST]>>>\n```"
+      }
+    ],
+    "responseFormatToAI": "###日记写入结果：\n{result}\n###"
+  },
+  "dependencies": {
+    "python": ">=3.7",
+    "libraries": []
+  }
+}

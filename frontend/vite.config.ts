@@ -13,12 +13,15 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // Proxy API requests to the backend server
+      // Proxy chat API requests to the backend server
       "/api": {
-        target: "http://127.0.0.1:8000", // Default backend address
+        target: "http://127.0.0.1:8000",
         changeOrigin: true,
-        // Optionally rewrite path if needed (e.g., remove /api prefix if backend doesn't expect it)
-        // rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      // Proxy admin API requests to the settings backend server (port 6005)
+      "/admin_api": {
+        target: "http://127.0.0.1:6005",
+        changeOrigin: true,
       },
     },
   },

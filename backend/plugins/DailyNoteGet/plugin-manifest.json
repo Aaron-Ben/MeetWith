@@ -1,0 +1,32 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "DailyNoteGet",
+  "version": "1.0.0",
+  "displayName": "日记获取",
+  "description": "获取角色的日记内容。返回所有角色的日记本内容，按角色名称分类。",
+  "author": "System",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "python",
+    "command": "python daily_note_get.py"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 10000
+  },
+  "capabilities": {
+    "systemPromptPlaceholders": [],
+    "invocationCommands": [
+      {
+        "commandIdentifier": "DailyNoteGetRequest",
+        "description": "要获取角色的日记内容，请在回复的末尾使用以下格式发出请求：```Tool\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DailyNoteGet「末」\n<<<[END_TOOL_REQUEST]>>>\n```\n\n这将返回所有角色的日记内容，格式为 JSON：\n{\n  \"角色名1\": \"日记内容...\",\n  \"角色名2\": \"日记内容...\"\n}",
+        "example": "```text\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DailyNoteGet「末」\n<<<[END_TOOL_REQUEST]>>>\n```"
+      }
+    ],
+    "responseFormatToAI": "###日记获取结果：\n{result}\n###"
+  },
+  "dependencies": {
+    "python": ">=3.7",
+    "libraries": []
+  }
+}
