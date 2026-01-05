@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Search, Trash2, Save, X, FileText } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
+import "./settings-theme.css";
 
 const API_BASE = "";
 
@@ -48,6 +50,7 @@ interface ApiResponse<T> {
 type NavSection = 'base-config' | 'daily-notes-manager' | string;
 
 export function Settings() {
+  const { theme } = useTheme();
   // Navigation state
   const [activeSection, setActiveSection] = useState<NavSection>('base-config');
   const [activePlugin, setActivePlugin] = useState<string | null>(null);
@@ -791,7 +794,7 @@ export function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pt-[52px]">
+    <div className={`settings-page settings-page-${theme} min-h-screen pt-[52px]`}>
       {/* Top bar */}
       <header className="fixed top-0 left-0 right-0 z-50 h-[52px] bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <div className="h-full max-w-[1600px] mx-auto px-5 flex justify-between items-center">
@@ -865,7 +868,7 @@ export function Settings() {
 
           {/* Back button */}
           <Link to="/" className="mt-6 block">
-            <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
+            <button className="settings-back-button w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors">
               <ChevronLeft className="w-4 h-4" />
               返回聊天
             </button>

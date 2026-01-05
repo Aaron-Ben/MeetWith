@@ -1,20 +1,24 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { Settings } from '@/pages/Settings';
-import { ChatApp } from '@/pages/Chat';
+import VCPChat from '@/pages/VCPChat';
 
-const router = createBrowserRouter([
+// 路由配置
+const routes = [
   {
     path: '/',
-    element: <ChatApp />,
+    element: <VCPChat />,
   },
   {
     path: '/settings',
     element: <Settings />,
   },
-]);
+];
+
+const router = createBrowserRouter(routes);
 
 export const AppRouter: React.FC = () => {
   return <RouterProvider router={router} />;
 };
 
 export default router;
+export { routes };
