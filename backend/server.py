@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import httpx
 from pytz import timezone
 from dotenv import load_dotenv
@@ -581,6 +582,14 @@ app.add_middleware(
 # Import routes after app is created to register them
 import routes.setting
 routes.setting.register_routes(app)
+
+# 挂载静态文件目录
+agent_dir = Path(__file__).parent / 'Agent'
+if agent_dir.exists():
+    app.mount("/Agent", StaticFiles(directory=str(agent_dir)), name="agent_files")
+    logger.info(f"已挂载 Agent 静态文件目录: {agent_dir}")
+else:
+    logger.warning(f"Agent 目录不存在: {agent_dir}")
 
 @app.middleware("http")
 async def logging_middleware(request: Request, call_next):

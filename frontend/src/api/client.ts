@@ -43,21 +43,3 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-// 图片URL处理工具
-export const getImageUrl = (path?: string, timestamp?: string | number): string => {
-  if (!path) return '';
-  if (path.startsWith('http://') || path.startsWith('https://')) {
-    return path;
-  }
-  let url = path.startsWith('/') ? path : '/' + path;
-  if (timestamp) {
-    const ts = typeof timestamp === 'string'
-      ? new Date(timestamp).getTime()
-      : timestamp;
-    url += `?v=${ts}`;
-  }
-  return url;
-};
-
-export default apiClient;

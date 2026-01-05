@@ -13,13 +13,13 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // Proxy chat API requests to the backend server
-      "/api": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
       // Proxy admin API requests to the settings backend server (port 6005)
       "/admin_api": {
+        target: "http://127.0.0.1:6005",
+        changeOrigin: true,
+      },
+      // Proxy Agent static files to the settings backend server (port 6005)
+      "/Agent": {
         target: "http://127.0.0.1:6005",
         changeOrigin: true,
       },

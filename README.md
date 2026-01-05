@@ -11,6 +11,12 @@
 - **AI 内容提取**：智能提取网页关键信息（标题、摘要、要点）
 - **可视化标记**：对话中显示"网络搜索"标记
 
+### Agent 管理系统
+- **动态 Agent 加载**：前端自动从后端加载 Agent 配置
+- **Agent 配置存储**：Agent 配置以 `.txt` 文件形式存储在 `backend/Agent/` 目录
+- **实时刷新**：支持在界面上手动刷新 Agent 列表
+- **多 Agent 支持**：可以创建多个不同的 AI 助手角色
+
 ### 插件系统
 - **动态插件加载**：支持热加载/卸载插件
 - **插件管理面板**：Web 界面管理插件配置
@@ -53,7 +59,12 @@
 ```
 MeetWith/
 ├── backend/                    # 后端服务
-│   ├── app/
+│   ├── Agent/                  # Agent 配置目录
+│   │   ├── agent1/             # Agent 1 配置
+│   │   │   └── system.txt      # 系统提示词
+│   │   └── agent2/             # Agent 2 配置
+│   │       └── system.txt
+│   ├── app/                    # (已弃用，保留但不维护)
 │   │   ├── services/
 │   │   │   ├── agent/         # AI Agent 服务
 │   │   │   ├── web_search/    # 网络搜索服务
@@ -67,7 +78,7 @@ MeetWith/
 │   │   ├── DailyNoteGet/      # 日记读取插件
 │   │   └── DailyNoteWrite/    # 日记写入插件
 │   ├── routes/                # API 路由
-│   │   └── setting.py         # 管理接口
+│   │   └── setting.py         # 管理接口 & Agent API
 │   ├── plugin_manager.py      # 插件管理器
 │   ├── server.py              # FastAPI 服务器入口
 │   ├── config.env             # 配置文件
@@ -75,14 +86,26 @@ MeetWith/
 │
 ├── frontend/                   # 前端应用
 │   ├── src/
+│   │   ├── api/                # API 客户端
+│   │   │   ├── agents.ts       # Agent API
+│   │   │   └── client.ts       # Axios 配置
 │   │   ├── components/         # 组件
+│   │   │   ├── chat/           # 聊天相关组件
+│   │   │   │   ├── AgentList.tsx       # Agent 列表
+│   │   │   │   ├── ChatArea.tsx        # 聊天区域
+│   │   │   │   ├── MessageList.tsx     # 消息列表
+│   │   │   │   └── ...
 │   │   │   ├── ChatMessagesView.tsx    # 聊天消息视图
 │   │   │   ├── InputForm.tsx            # 输入表单
 │   │   │   ├── WelcomeScreen.tsx        # 欢迎页面
 │   │   │   └── Settings.tsx             # 设置页面
+│   │   ├── contexts/           # React Context
+│   │   │   ├── ChatContext.tsx # 聊天上下文（Agent 管理）
+│   │   │   └── ThemeContext.tsx # 主题上下文
 │   │   ├── pages/              # 页面
 │   │   │   ├── Chat.tsx        # 聊天页面
-│   │   │   └── Settings.tsx    # 设置页面
+│   │   │   ├── Settings.tsx    # 设置页面
+│   │   │   └── VCPChat.tsx     # VCP 聊天页面
 │   │   ├── router/             # 路由配置
 │   │   ├── App.tsx             # 根应用
 │   │   └── main.tsx            # 入口文件
@@ -159,6 +182,59 @@ npm run dev
 - 前端: http://localhost:5173
 - 后端 API: http://localhost:6005
 - 管理面板: http://localhost:6005/admin_api/plugins
+
+### 5. 创建新 Agent
+
+在 `backend/Agent/` 目录下创建新的 Agent：
+
+```bash
+cd backend/Agent
+mkdir myagent
+echo "你是一个专业的AI助手，专门帮助用户解决问题。" > myagent/system.txt
+```
+
+刷新前端页面或点击 Agent 列表的刷新按钮，新 Agent 即可加载。
+
+## Agent 管理 API
+
+### 获取所有 Agent
+```http
+GET /admin_api/agents
+```
+
+响应：
+```json
+{
+  "agents": [
+    {
+      "id": "agent1",
+      "name": "助手1",
+      "configPath": "/backend/Agent/agent1/system.txt",
+      "systemPrompt": "你是一个有用的助手..."
+    }
+  ]
+}
+```
+
+### 获取单个 Agent
+```http
+GET /admin_api/agents/{agent_name}
+```
+
+### 保存 Agent 配置
+```http
+POST /admin_api/agents/{agent_name}
+Content-Type: application/json
+
+{
+  "systemPrompt": "新的系统提示词"
+}
+```
+
+### 删除 Agent
+```http
+DELETE /admin_api/agents/{agent_name}
+```
 
 ## 网络搜索功能说明
 
@@ -277,7 +353,11 @@ Content-Type: application/json
 }
 ```
 
-### 管理接口
+### Agent 管理 API
+
+详见 [Agent 管理 API](#agent-管理-api) 章节。
+
+### 插件管理接口
 ```http
 # 获取插件列表
 GET /admin_api/plugins

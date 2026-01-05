@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).parent.parent
 PLUGIN_DIR = BASE_DIR / 'plugins'
 DAILY_NOTE_ROOT = BASE_DIR / 'dailynote'
+AGENT_DIR = BASE_DIR / 'Agent'
 MANIFEST_FILE = 'plugin-manifest.json'
 BLOCKED_EXTENSION = '.block'
 PREVIEW_LENGTH = 100
@@ -674,3 +675,124 @@ def register_routes(app: FastAPI):
         except Exception as e:
             logger.error('[DailyNotes] Error deleting notes:', e)
             raise HTTPException(status_code=500, detail=f'Failed to delete notes: {str(e)}')
+
+    @app.get("/admin_api/agents")
+    async def list_agents():
+        """获取所有 Agent 列表"""
+        try:
+            agents = []
+
+            if not AGENT_DIR.exists():
+                return {"agents": []}
+
+            for agent_folder in AGENT_DIR.iterdir():
+                if agent_folder.is_dir():
+                    agent_name = agent_folder.name
+
+                    try:
+                        # 尝试读取配置文件
+                        config_files = list(agent_folder.glob("*.txt"))
+                        content = ""
+                        config_path = None
+
+                        if config_files:
+                            config_file = config_files[0]
+                            content = config_file.read_text(encoding="utf-8")
+                            config_path = str(config_file.relative_to(BASE_DIR))
+
+                        # 检查头像文件是否存在
+                        avatar_path = agent_folder / "Image" / "avatar.png"
+                        avatar_url = f"/Agent/{agent_name}/Image/avatar.png" if avatar_path.exists() else None
+
+                        agent_data = {
+                            "id": agent_name,
+                            "name": agent_name,
+                            "configPath": config_path,
+                            "systemPrompt": content,
+                            "avatarUrl": avatar_url
+                        }
+                        agents.append(agent_data)
+                    except Exception as e:
+                        logger.warning(f"[AdminPanel] Error reading agent {agent_name}: {e}")
+                        # 即使出错也添加 Agent，使用默认值
+                        agents.append({
+                            "id": agent_name,
+                            "name": agent_name,
+                            "configPath": None,
+                            "systemPrompt": "",
+                            "avatarUrl": None
+                        })
+
+            return {"agents": agents}
+        except Exception as e:
+            logger.error("[AdminPanel] Error listing agents:", e)
+            raise HTTPException(status_code=500, detail=f"Failed to list agents: {str(e)}")
+
+    @app.get("/admin_api/agents/{agent_name}")
+    async def get_agent(agent_name: str):
+        """获取指定 Agent 的配置"""
+        try:
+            agent_path = AGENT_DIR / agent_name
+            if not agent_path.exists():
+                raise HTTPException(status_code=404, detail=f"Agent \"{agent_name}\" not found.")
+
+            # 尝试读取配置文件
+            config_files = list(agent_path.glob("*.txt"))
+            content = ""
+            config_path = None
+
+            if config_files:
+                config_file = config_files[0]
+                content = config_file.read_text(encoding="utf-8")
+                config_path = str(config_file.relative_to(BASE_DIR))
+
+            # 检查头像文件是否存在
+            avatar_path = agent_path / "Image" / "avatar.png"
+            avatar_url = f"/Agent/{agent_name}/Image/avatar.png" if avatar_path.exists() else None
+
+            return {
+                "id": agent_name,
+                "name": agent_name,
+                "configPath": config_path,
+                "systemPrompt": content,
+                "avatarUrl": avatar_url
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[AdminPanel] Error getting agent {agent_name}:", e)
+            raise HTTPException(status_code=500, detail=f"Failed to get agent: {str(e)}")
+
+    @app.post("/admin_api/agents/{agent_name}/avatar")
+    async def upload_agent_avatar(agent_name: str, file: UploadFile = File(...)):
+        """上传 Agent 头像"""
+        try:
+            agent_path = AGENT_DIR / agent_name
+            if not agent_path.exists():
+                raise HTTPException(status_code=404, detail=f"Agent \"{agent_name}\" not found.")
+
+            # 创建 Image 目录
+            image_dir = agent_path / "Image"
+            image_dir.mkdir(parents=True, exist_ok=True)
+
+            # 检查文件类型
+            if not file.content_type or not file.content_type.startswith("image/"):
+                raise HTTPException(status_code=400, detail="Only image files are allowed.")
+
+            # 保存文件
+            avatar_path = image_dir / "avatar.png"
+            content = await file.read()
+            avatar_path.write_bytes(content)
+
+            logger.info(f"[AdminPanel] Uploaded avatar for agent {agent_name}")
+
+            return {
+                "message": "Avatar uploaded successfully",
+                "avatarUrl": f"/Agent/{agent_name}/Image/avatar.png"
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[AdminPanel] Error uploading avatar for agent {agent_name}:", e)
+            raise HTTPException(status_code=500, detail=f"Failed to upload avatar: {str(e)}")
+

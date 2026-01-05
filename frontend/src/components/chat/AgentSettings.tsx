@@ -1,17 +1,18 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useChat } from '@/contexts/ChatContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { uploadAgentAvatar } from '@/api/agents';
 
 export default function AgentSettings() {
-  const { currentAgent, setCurrentAgent } = useChat();
+  const { currentAgent, setCurrentAgent, reloadAgents } = useChat();
   const { theme } = useTheme();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [streamEnabled, setStreamEnabled] = useState(true);
   const [settings, setSettings] = useState(
     currentAgent || {
       name: '',
       systemPrompt: '',
-      model: '',
-      temperature: 0.7,
-      maxTokens: 4000,
     }
   );
 
@@ -38,6 +39,38 @@ export default function AgentSettings() {
     }
   };
 
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentAgent) return;
+
+    // 检查文件类型
+    if (!file.type.startsWith('image/')) {
+      alert('请选择图片文件');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      await uploadAgentAvatar(currentAgent.id, file);
+      // 重新加载 Agent 列表以获取新的头像 URL
+      await reloadAgents();
+      alert('头像上传成功');
+    } catch (error) {
+      console.error('上传头像失败:', error);
+      alert('头像上传失败，请重试');
+    } finally {
+      setUploading(false);
+      // 清空文件选择器
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
       <div className={`flex justify-between items-center mb-4 pb-2.5 ${
@@ -52,7 +85,7 @@ export default function AgentSettings() {
           <label htmlFor="agentNameInput" className={`block text-sm font-medium ${
             theme === 'dark' ? 'text-gray-400' : 'text-slate-600'
           }`}>
-            Agent 名称:
+            名称:
           </label>
           <input
             type="text"
@@ -68,20 +101,46 @@ export default function AgentSettings() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="agentAvatarInput" className={`block text-sm font-medium ${
+          <label className={`block text-sm font-medium ${
             theme === 'dark' ? 'text-gray-400' : 'text-slate-600'
           }`}>
-            Agent 头像:
+            头像:
           </label>
+          <div
+            onClick={handleAvatarClick}
+            className={`relative w-16 h-16 rounded-full border-2 cursor-pointer transition-opacity ${
+              theme === 'dark' ? 'border-gray-600 hover:border-gray-500' : 'border-blue-500 hover:border-blue-400'
+            } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title={uploading ? '上传中...' : '点击更换头像'}
+          >
+            {currentAgent.avatarUrl ? (
+              <img
+                src={currentAgent.avatarUrl}
+                alt={currentAgent.name}
+                className="w-full h-full rounded-full object-cover"
+              />
+            ) : (
+              <div className={`w-full h-full rounded-full flex items-center justify-center text-sm ${
+                theme === 'dark' ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-slate-500'
+              }`}>
+                {uploading ? '...' : '+'}
+              </div>
+            )}
+            {!uploading && (
+              <div className={`absolute inset-0 rounded-full flex items-center justify-center text-xs font-medium opacity-0 hover:opacity-100 transition-opacity ${
+                theme === 'dark' ? 'bg-black/50 text-white' : 'bg-black/30 text-white'
+              }`}>
+                更换
+              </div>
+            )}
+          </div>
           <input
+            ref={fileInputRef}
             type="file"
-            id="agentAvatarInput"
-            accept="image/png, image/jpeg, image/gif"
-            className={`w-full px-2.5 py-2.5 rounded-lg border text-base outline-none focus:ring-2 ${
-              theme === 'dark'
-                ? 'bg-gray-900 border-gray-700 text-gray-200 focus:border-blue-600/75 focus:ring-blue-900/30'
-                : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500/70 focus:ring-blue-500/30'
-            }`}
+            accept="image/*"
+            onChange={handleFileChange}
+            className="hidden"
+            disabled={uploading}
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -102,104 +161,26 @@ export default function AgentSettings() {
             }`}
           />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="agentModel" className={`block text-sm font-medium ${
-            theme === 'dark' ? 'text-gray-400' : 'text-slate-600'
-          }`}>
-            模型名称:
-          </label>
-          <input
-            type="text"
-            id="agentModel"
-            value={settings.model}
-            onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-            placeholder="例如 gpt-4"
-            className={`w-full px-2.5 py-2.5 rounded-lg border text-base outline-none focus:ring-2 ${
-              theme === 'dark'
-                ? 'bg-gray-900 border-gray-700 text-gray-200 focus:border-blue-600/75 focus:ring-blue-900/30'
-                : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500/70 focus:ring-blue-500/30'
+        <div className="flex items-center gap-2">
+          <div
+            onClick={() => setStreamEnabled(!streamEnabled)}
+            className={`w-5 h-5 rounded-full cursor-pointer transition-all duration-200 flex items-center justify-center relative ${
+              streamEnabled
+                ? theme === 'dark' ? 'bg-green-600' : 'bg-green-500'
+                : theme === 'dark' ? 'bg-gray-700' : 'bg-gray-300'
             }`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="agentTemperature" className={`block text-sm font-medium ${
+            title={streamEnabled ? '流式输出（点击关闭）' : '非流式输出（点击开启）'}
+          >
+            {streamEnabled && (
+              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </div>
+          <label className={`text-sm font-medium cursor-pointer ${
             theme === 'dark' ? 'text-gray-400' : 'text-slate-600'
-          }`}>
-            Temperature (0-1):
-          </label>
-          <input
-            type="number"
-            id="agentTemperature"
-            min={0}
-            max={1}
-            step={0.1}
-            value={settings.temperature}
-            onChange={(e) => setSettings({ ...settings, temperature: parseFloat(e.target.value) })}
-            className={`w-full px-2.5 py-2.5 rounded-lg border text-base outline-none focus:ring-2 ${
-              theme === 'dark'
-                ? 'bg-gray-900 border-gray-700 text-gray-200 focus:border-blue-600/75 focus:ring-blue-900/30'
-                : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500/70 focus:ring-blue-500/30'
-            }`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="agentMaxTokens" className={`block text-sm font-medium ${
-            theme === 'dark' ? 'text-gray-400' : 'text-slate-600'
-          }`}>
-            最大输出 Token:
-          </label>
-          <input
-            type="number"
-            id="agentMaxTokens"
-            min={0}
-            step={100}
-            value={settings.maxTokens}
-            onChange={(e) => setSettings({ ...settings, maxTokens: parseInt(e.target.value) })}
-            className={`w-full px-2.5 py-2.5 rounded-lg border text-base outline-none focus:ring-2 ${
-              theme === 'dark'
-                ? 'bg-gray-900 border-gray-700 text-gray-200 focus:border-blue-600/75 focus:ring-blue-900/30'
-                : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500/70 focus:ring-blue-500/30'
-            }`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className={`block text-sm font-medium ${
-            theme === 'dark' ? 'text-gray-400' : 'text-slate-600'
-          }`}>
-            输出模式:
-          </label>
-          <label className={`flex items-center gap-3 ${theme === 'dark' ? 'text-gray-200' : 'text-slate-700'}`}>
-            <input
-              type="radio"
-              name="streamOutput"
-              value="true"
-              defaultChecked
-              className="sr-only peer"
-            />
-            <div className={`w-12 h-6 rounded-full transition-colors cursor-pointer relative ${
-              theme === 'dark' ? 'bg-gray-300 peer-checked:bg-green-500' : 'bg-gray-300 peer-checked:bg-green-500'
-            }`}>
-              <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-6`} />
-            </div>
-            <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-slate-600'}`}>
-              流式
-            </span>
-          </label>
-          <label className={`flex items-center gap-3 ${theme === 'dark' ? 'text-gray-200' : 'text-slate-700'}`}>
-            <input
-              type="radio"
-              name="streamOutput"
-              value="false"
-              className="sr-only peer"
-            />
-            <div className={`w-12 h-6 rounded-full transition-colors cursor-pointer relative ${
-              theme === 'dark' ? 'bg-gray-300 peer-checked:bg-green-500' : 'bg-gray-300 peer-checked:bg-green-500'
-            }`}>
-              <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-6`} />
-            </div>
-            <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-slate-600'}`}>
-              非流式
-            </span>
+          }`} onClick={() => setStreamEnabled(!streamEnabled)}>
+            流式输出
           </label>
         </div>
         <div className="flex justify-start gap-2.5 mt-4">
