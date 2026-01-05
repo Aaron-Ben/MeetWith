@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useState, useRef, FormEvent } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useChat } from '@/contexts/ChatContext';
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function AgentList() {
-  const { agents, currentAgent, setCurrentAgent, loadingAgents, reloadAgents } = useChat();
+  const { agents, currentAgent, setCurrentAgent, loadingAgents, reloadAgents, createAgent } = useChat();
   const { theme } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
@@ -106,7 +110,11 @@ export default function AgentList() {
           }`}>
             <span
               className="absolute top-0 right-2 text-2xl font-bold cursor-pointer text-gray-400 hover:text-blue-500"
-              onClick={() => setShowCreateModal(false)}
+              onClick={() => {
+                setShowCreateModal(false);
+                setAvatarPreview(null);
+                setAvatarFile(null);
+              }}
             >
               ×
             </span>
@@ -116,10 +124,26 @@ export default function AgentList() {
               创建新 Agent
             </h2>
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e: FormEvent) => {
                 e.preventDefault();
-                // TODO: Implement agent creation via API
-                setShowCreateModal(false);
+                const formData = new FormData(e.currentTarget as HTMLFormElement);
+                const name = formData.get('name') as string;
+                const systemPrompt = formData.get('systemPrompt') as string;
+
+                if (!name) return;
+
+                setIsCreating(true);
+                try {
+                  await createAgent(name, systemPrompt, avatarFile || undefined);
+                  setShowCreateModal(false);
+                  setAvatarPreview(null);
+                  setAvatarFile(null);
+                } catch (error) {
+                  console.error('Failed to create agent:', error);
+                  alert('创建 Agent 失败，请重试');
+                } finally {
+                  setIsCreating(false);
+                }
               }}
               className="w-full flex flex-col gap-3"
             >
@@ -143,22 +167,50 @@ export default function AgentList() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="newAgentModel" className={`block text-sm font-medium ${
+                <label htmlFor="newAgentAvatar" className={`block text-sm font-medium ${
                   theme === 'dark' ? 'text-gray-400' : 'text-slate-600'
                 }`}>
-                  模型名称:
+                  头像:
                 </label>
-                <input
-                  type="text"
-                  id="newAgentModel"
-                  name="model"
-                  placeholder="例如 gpt-4"
-                  className={`w-full px-2.5 py-2.5 rounded-lg border text-base outline-none focus:ring-2 ${
-                    theme === 'dark'
-                      ? 'bg-gray-900 border-gray-700 text-gray-200 focus:border-blue-600/75 focus:ring-blue-900/30'
-                      : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500/70 focus:ring-blue-500/30'
-                  }`}
-                />
+                <div className="flex items-center gap-3">
+                  <input
+                    type="file"
+                    id="newAgentAvatar"
+                    name="avatarUrl"
+                    accept="image/*"
+                    ref={avatarInputRef}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setAvatarFile(file);
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setAvatarPreview(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className={`flex-1 px-4 py-2.5 rounded-lg border text-base text-center transition-colors ${
+                      theme === 'dark'
+                        ? 'bg-gray-900 border-gray-700 text-gray-200 hover:bg-gray-700'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    选择图片
+                  </button>
+                  {avatarPreview && (
+                    <img
+                      src={avatarPreview}
+                      alt="头像预览"
+                      className="w-10 h-10 rounded-full object-cover border-2 border-blue-500"
+                    />
+                  )}
+                </div>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="newAgentPrompt" className={`block text-sm font-medium ${
@@ -180,13 +232,14 @@ export default function AgentList() {
               </div>
               <button
                 type="submit"
+                disabled={isCreating}
                 className={`px-4 py-2.5 rounded-lg border-0 cursor-pointer text-base transition-colors mr-2.5 ${
                   theme === 'dark'
-                    ? 'bg-blue-600/75 text-white hover:bg-gray-600'
-                    : 'bg-blue-500/70 text-white hover:bg-blue-600'
+                    ? 'bg-blue-600/75 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed'
+                    : 'bg-blue-500/70 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed'
                 }`}
               >
-                创建
+                {isCreating ? '创建中...' : '创建'}
               </button>
             </form>
           </div>

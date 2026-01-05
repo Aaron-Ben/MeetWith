@@ -4,7 +4,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { uploadAgentAvatar } from '@/api/agents';
 
 export default function AgentSettings() {
-  const { currentAgent, setCurrentAgent, reloadAgents } = useChat();
+  const { currentAgent, reloadAgents, deleteAgent } = useChat();
   const { theme } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -32,10 +32,14 @@ export default function AgentSettings() {
     console.log('Saving settings:', settings);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (confirm(`确定要删除 Agent "${currentAgent.name}" 吗？`)) {
-      // TODO: Delete agent
-      setCurrentAgent(null);
+      try {
+        await deleteAgent(currentAgent.id);
+      } catch (error) {
+        console.error('删除 Agent 失败:', error);
+        alert('删除 Agent 失败，请重试');
+      }
     }
   };
 

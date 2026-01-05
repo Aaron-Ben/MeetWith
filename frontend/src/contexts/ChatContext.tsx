@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
-import { fetchAgents as fetchAgentsApi, Agent as ApiAgent } from '@/api/agents';
+import { fetchAgents as fetchAgentsApi, createAgent as createAgentApi, deleteAgent as deleteAgentApi, uploadAgentAvatar, Agent as ApiAgent } from '@/api/agents';
 
 export interface Message {
   id: string;
@@ -62,6 +62,8 @@ interface ChatContextType {
   deleteTopic: (topicId: string) => void;
   toggleNotificationSidebar: () => void;
   reloadAgents: () => Promise<void>;
+  createAgent: (name: string, systemPrompt: string, avatarFile?: File) => Promise<{ message: string; agent: ApiAgent }>;
+  deleteAgent: (agentName: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -180,6 +182,41 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     setShowNotificationSidebar(prev => !prev);
   }, []);
 
+  const createAgent = useCallback(async (name: string, systemPrompt: string, avatarFile?: File) => {
+    try {
+      // 创建 Agent
+      const result = await createAgentApi(name, systemPrompt);
+
+      // 如果有头像文件，上传头像
+      if (avatarFile) {
+        await uploadAgentAvatar(name, avatarFile);
+      }
+
+      // 重新加载 Agent 列表
+      await reloadAgents();
+
+      return result;
+    } catch (error) {
+      console.error('Failed to create agent:', error);
+      throw error;
+    }
+  }, [reloadAgents]);
+
+  const deleteAgent = useCallback(async (agentName: string) => {
+    try {
+      await deleteAgentApi(agentName);
+      // 重新加载 Agent 列表
+      await reloadAgents();
+      // 如果删除的是当前选中的 Agent，清空选择
+      if (currentAgent?.id === agentName) {
+        setCurrentAgent(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete agent:', error);
+      throw error;
+    }
+  }, [reloadAgents, currentAgent]);
+
   return (
     <ChatContext.Provider
       value={{
@@ -200,6 +237,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         deleteTopic,
         toggleNotificationSidebar,
         reloadAgents,
+        createAgent,
+        deleteAgent,
       }}
     >
       {children}

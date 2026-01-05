@@ -45,6 +45,15 @@ export const deleteAgent = async (agentName: string): Promise<{ message: string 
   return response.data;
 };
 
+// 创建 Agent
+export const createAgent = async (name: string, systemPrompt: string): Promise<{ message: string; agent: Agent }> => {
+  const response = await apiClient.post<{ message: string; agent: Agent }>('/admin_api/agents', {
+    name,
+    systemPrompt
+  });
+  return response.data;
+};
+
 // 上传 Agent 头像
 export const uploadAgentAvatar = async (agentName: string, file: File): Promise<{ message: string; avatarUrl: string }> => {
   const formData = new FormData();

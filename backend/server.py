@@ -581,7 +581,9 @@ app.add_middleware(
 
 # Import routes after app is created to register them
 import routes.setting
+import routes.agent
 routes.setting.register_routes(app)
+routes.agent.register_routes(app)
 
 # 挂载静态文件目录
 agent_dir = Path(__file__).parent / 'Agent'
