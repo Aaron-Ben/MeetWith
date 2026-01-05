@@ -47,6 +47,7 @@ interface ChatContextType {
   agents: Agent[];
   topics: Topic[];
   messages: Message[];
+  showNotificationSidebar: boolean;
 
   // Actions
   setCurrentAgent: (agent: Agent | null) => void;
@@ -57,6 +58,7 @@ interface ChatContextType {
   clearMessages: () => void;
   createTopic: (name: string) => Topic;
   deleteTopic: (topicId: string) => void;
+  toggleNotificationSidebar: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -93,6 +95,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [currentAgent, setCurrentAgent] = useState<Agent | null>(agents[0] || null);
   const [currentTopic, setCurrentTopic] = useState<Topic | null>(topics[0] || null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [showNotificationSidebar, setShowNotificationSidebar] = useState(true);
 
   const addMessage = useCallback((message: Message) => {
     setMessages(prev => [...prev, message]);
@@ -143,6 +146,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     }
   }, [currentTopic, topics]);
 
+  const toggleNotificationSidebar = useCallback(() => {
+    setShowNotificationSidebar(prev => !prev);
+  }, []);
+
   return (
     <ChatContext.Provider
       value={{
@@ -151,6 +158,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         agents,
         topics,
         messages,
+        showNotificationSidebar,
         setCurrentAgent,
         setCurrentTopic,
         addMessage,
@@ -159,6 +167,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         clearMessages,
         createTopic,
         deleteTopic,
+        toggleNotificationSidebar,
       }}
     >
       {children}

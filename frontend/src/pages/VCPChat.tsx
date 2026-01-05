@@ -1,34 +1,31 @@
-import { useState } from 'react';
-import { ChatProvider } from '@/contexts/ChatContext';
+import { ChatProvider, useChat } from '@/contexts/ChatContext';
 import Sidebar from '@/components/chat/Sidebar';
 import ChatArea from '@/components/chat/ChatArea';
 import NotificationSidebar from '@/components/chat/NotificationSidebar';
 import ResizableSplitter from '@/components/chat/ResizableSplitter';
-import './vcpchat.css';
 
-export default function VCPChat() {
-  const [sidebarWidth, setSidebarWidth] = useState(260);
-  const [notificationWidth, setNotificationWidth] = useState(300);
+function VCPChatContent() {
+  const { showNotificationSidebar } = useChat();
 
   return (
+    <div className="flex w-full h-screen overflow-hidden font-system antialiased">
+      <Sidebar />
+      <ResizableSplitter direction="horizontal" onDrag={() => {}} />
+      <ChatArea />
+      {showNotificationSidebar && (
+        <>
+          <ResizableSplitter direction="horizontal" onDrag={() => {}} />
+          <NotificationSidebar />
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function VCPChat() {
+  return (
     <ChatProvider>
-      <div className="vcpchat-container">
-        <Sidebar />
-        <ResizableSplitter
-          direction="horizontal"
-          onDrag={(delta) => {
-            setSidebarWidth(prev => Math.max(220, Math.min(400, prev + delta)));
-          }}
-        />
-        <ChatArea />
-        <ResizableSplitter
-          direction="horizontal"
-          onDrag={(delta) => {
-            setNotificationWidth(prev => Math.max(250, Math.min(500, prev + delta)));
-          }}
-        />
-        <NotificationSidebar />
-      </div>
+      <VCPChatContent />
     </ChatProvider>
   );
 }

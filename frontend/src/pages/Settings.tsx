@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, Search, Trash2, Save, X, FileText } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
-import "./settings-theme.css";
 
 const API_BASE = "";
 
@@ -435,7 +434,9 @@ export function Settings() {
     const entry = entries[index];
     if (entry.isCommentOrEmpty) {
       return (
-        <div key={index} className="text-sm text-gray-500 font-mono">
+        <div key={index} className={`text-sm font-mono ${
+          theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+        }`}>
           {entry.value || '(空行)'}
         </div>
       );
@@ -445,9 +446,13 @@ export function Settings() {
       !isNaN(parseFloat(entry.value)) && isFinite(parseFloat(entry.value)) ? 'number' : 'text';
 
     return (
-      <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+      <div key={index} className={`p-4 rounded-lg border ${
+        theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'
+      }`}>
         <label className="block mb-2">
-          <span className="text-gray-800 font-semibold">{entry.key}</span>
+          <span className={`font-semibold ${
+            theme === 'dark' ? 'text-gray-200' : 'text-gray-800'
+          }`}>{entry.key}</span>
         </label>
         {inferredType === 'boolean' ? (
           <div className="flex items-center gap-3">
@@ -458,10 +463,14 @@ export function Settings() {
                 onChange={(e) => onUpdate(index, e.target.checked ? 'true' : 'false')}
                 className="sr-only peer"
               />
-              <div className="absolute inset-0 bg-gray-300 rounded-full transition-colors peer-checked:bg-blue-500 cursor-pointer" />
+              <div className={`absolute inset-0 rounded-full transition-colors peer-checked:bg-blue-500 cursor-pointer ${
+                theme === 'dark' ? 'bg-gray-600' : 'bg-gray-300'
+              }`} />
               <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-6 shadow" />
             </label>
-            <span className="text-sm text-gray-600">
+            <span className={`text-sm ${
+              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+            }`}>
               {entry.value === 'true' ? '启用' : '禁用'}
             </span>
           </div>
@@ -470,7 +479,11 @@ export function Settings() {
             value={entry.value}
             onChange={(e) => onUpdate(index, e.target.value)}
             rows={(entry.isMultilineQuoted || entry.value.includes('\n')) ? 4 : 1}
-            className="w-full bg-white text-gray-900 p-3 rounded border border-gray-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-mono text-sm resize-y"
+            className={`w-full p-3 rounded border focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-mono text-sm resize-y ${
+              theme === 'dark'
+                ? 'bg-gray-900 text-gray-200 border-gray-700 focus:border-blue-600/75'
+                : 'bg-white text-gray-900 border-gray-300 focus:border-blue-500/70'
+            }`}
           />
         )}
         {onDelete && (
@@ -490,12 +503,16 @@ export function Settings() {
     if (activeSection === 'base-config') {
       return (
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <h2 className="text-2xl font-bold text-blue-600 mb-6 pb-3 border-b-2 border-blue-600">
+          <h2 className={`text-2xl font-bold mb-6 pb-3 border-b-2 ${
+            theme === 'dark' ? 'text-blue-400 border-blue-400' : 'text-blue-600 border-blue-600'
+          }`}>
             全局基础配置 (config.env)
           </h2>
           {baseConfigLoading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full" />
+              <div className={`animate-spin w-10 h-10 border-4 rounded-full ${
+                theme === 'dark' ? 'border-gray-700 border-t-blue-400' : 'border-gray-200 border-t-blue-600'
+              }`} />
             </div>
           ) : (
             <div className="space-y-5">
@@ -513,7 +530,7 @@ export function Settings() {
                 保存全局配置
               </button>
               {baseConfigStatus && (
-                <p className="text-sm text-center text-gray-600">{baseConfigStatus}</p>
+                <p className={`text-sm text-center ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{baseConfigStatus}</p>
               )}
             </div>
           )}
@@ -524,16 +541,18 @@ export function Settings() {
     if (activeSection === 'daily-notes-manager') {
       return (
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <h2 className="text-2xl font-bold text-blue-600 mb-6 pb-3 border-b-2 border-blue-600">
+          <h2 className={`text-2xl font-bold mb-6 pb-3 border-b-2 ${
+            theme === 'dark' ? 'text-blue-400 border-blue-400' : 'text-blue-600 border-blue-600'
+          }`}>
             日记管理
           </h2>
           {editingNote ? (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-xl font-semibold text-gray-700">编辑日记</h3>
+                <h3 className={`text-xl font-semibold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>编辑日记</h3>
                 <button
                   onClick={() => setEditingNote(null)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -541,7 +560,11 @@ export function Settings() {
               <textarea
                 value={noteContent}
                 onChange={(e) => setNoteContent(e.target.value)}
-                className="w-full min-h-[300px] bg-white text-gray-900 p-4 rounded-lg border border-gray-300 focus:border-blue-500 focus:outline-none resize-y font-mono"
+                className={`w-full min-h-[300px] p-4 rounded-lg border focus:outline-none resize-y font-mono ${
+                  theme === 'dark'
+                    ? 'bg-gray-900 text-gray-200 border-gray-700 focus:border-blue-500'
+                    : 'bg-white text-gray-900 border-gray-300 focus:border-blue-500'
+                }`}
                 spellCheck={false}
               />
               <div className="flex gap-3">
@@ -563,8 +586,12 @@ export function Settings() {
           ) : (
             <div className="flex gap-5">
               {/* Folders sidebar */}
-              <div className="w-48 flex-shrink-0 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-700 mb-3 pb-2 border-b border-dashed border-gray-300">角色日记</h3>
+              <div className={`w-48 flex-shrink-0 p-4 rounded-lg border ${
+                theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'
+              }`}>
+                <h3 className={`text-lg font-semibold mb-3 pb-2 border-b border-dashed ${
+                  theme === 'dark' ? 'text-gray-200 border-gray-600' : 'text-gray-700 border-gray-300'
+                }`}>角色日记</h3>
                 <ul className="space-y-1">
                   {noteFolders.map(folder => (
                     <li
@@ -573,7 +600,9 @@ export function Settings() {
                       className={`px-3 py-2 rounded cursor-pointer transition-colors ${
                         activeFolder === folder
                           ? 'bg-blue-100 text-blue-700 font-semibold'
-                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                          : theme === 'dark'
+                            ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                       }`}
                     >
                       {folder}
@@ -585,16 +614,24 @@ export function Settings() {
               {/* Notes content */}
               <div className="flex-1 space-y-4">
                 {/* Toolbar */}
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className={`flex items-center gap-3 p-3 rounded-lg border ${
+                  theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'
+                }`}>
                   <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
+                      theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                    }`} />
                     <input
                       type="search"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && searchNotes()}
                       placeholder="搜索日记..."
-                      className="w-full pl-10 pr-4 py-2 bg-white text-gray-900 rounded border border-gray-300 focus:border-blue-500 focus:outline-none"
+                      className={`w-full pl-10 pr-4 py-2 rounded border focus:outline-none ${
+                        theme === 'dark'
+                          ? 'bg-gray-900 text-gray-200 border-gray-700 focus:border-blue-500'
+                          : 'bg-white text-gray-900 border-gray-300 focus:border-blue-500'
+                      }`}
                     />
                   </div>
                   <button
@@ -609,7 +646,9 @@ export function Settings() {
 
                 {/* Notes grid */}
                 {notes.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                  <div className={`flex flex-col items-center justify-center py-16 ${
+                    theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                  }`}>
                     <FileText className="w-16 h-16 mb-4 opacity-50" />
                     <p className="text-lg">当前角色中没有日记文件</p>
                   </div>
@@ -634,22 +673,22 @@ export function Settings() {
                               return newSet;
                             });
                           }}
-                          className={`bg-white p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md hover:-translate-y-1 ${
-                            isSelected
-                              ? 'border-l-4 border-l-blue-500 shadow-md shadow-blue-500/20'
-                              : 'border-gray-200'
+                          className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md hover:-translate-y-1 ${
+                            theme === 'dark'
+                              ? 'bg-gray-800 ' + (isSelected ? 'border-l-4 border-l-blue-400 shadow-md shadow-blue-400/20' : 'border-gray-700')
+                              : 'bg-white ' + (isSelected ? 'border-l-4 border-l-blue-500 shadow-md shadow-blue-500/20' : 'border-gray-200')
                           }`}
                         >
-                          <h4 className="font-semibold text-gray-800 mb-2 break-all">{note.name}</h4>
-                          <p className="text-sm text-gray-600 line-clamp-3 mb-3 min-h-[60px]">{note.preview}</p>
-                          <p className="text-xs text-gray-400">{new Date(note.lastModified).toLocaleString()}</p>
+                          <h4 className={`font-semibold mb-2 break-all ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>{note.name}</h4>
+                          <p className={`text-sm line-clamp-3 mb-3 min-h-[60px] ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{note.preview}</p>
+                          <p className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(note.lastModified).toLocaleString()}</p>
                         </div>
                       );
                     })}
                   </div>
                 )}
 
-                {notesStatus && <p className="text-sm text-center text-gray-600">{notesStatus}</p>}
+                {notesStatus && <p className={`text-sm text-center ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{notesStatus}</p>}
               </div>
             </div>
           )}
@@ -667,8 +706,10 @@ export function Settings() {
 
       return (
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex justify-between items-center mb-6 pb-3 border-b-2 border-blue-600">
-            <h2 className="text-2xl font-bold text-blue-600">
+          <div className={`flex justify-between items-center mb-6 pb-3 border-b-2 ${
+            theme === 'dark' ? 'border-blue-400' : 'border-blue-600'
+          }`}>
+            <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
               {plugin.manifest.displayName || plugin.name}
             </h2>
             <div className="flex items-center gap-3">
@@ -693,15 +734,19 @@ export function Settings() {
 
           {/* Description */}
           {plugin.manifest.description && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-gray-600">{plugin.manifest.description}</p>
+            <div className={`mb-6 p-4 rounded-lg border ${
+              theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'
+            }`}>
+              <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>{plugin.manifest.description}</p>
             </div>
           )}
 
           {/* Config */}
           {entries.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-700 mb-4 pb-2 border-b border-dashed border-gray-300">插件配置 (config.env)</h3>
+              <h3 className={`text-lg font-semibold mb-4 pb-2 border-b border-dashed ${
+                theme === 'dark' ? 'text-gray-200 border-gray-600' : 'text-gray-700 border-gray-300'
+              }`}>插件配置 (config.env)</h3>
               <div className="space-y-4">
                 {entries.map((_, index) =>
                   renderConfigEntry(
@@ -725,15 +770,19 @@ export function Settings() {
 
           {/* Invocation Commands */}
           {plugin.manifest.capabilities?.invocationCommands && plugin.manifest.capabilities.invocationCommands.length > 0 && (
-            <div className="mt-8 pt-6 border-t border-gray-200">
-              <h3 className="text-xl font-semibold text-gray-700 mb-4 pb-2 border-b border-dashed border-gray-300">AI 指令描述</h3>
+            <div className={`mt-8 pt-6 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+              <h3 className={`text-xl font-semibold mb-4 pb-2 border-b border-dashed ${
+                theme === 'dark' ? 'text-gray-200 border-gray-600' : 'text-gray-700 border-gray-300'
+              }`}>AI 指令描述</h3>
               <div className="space-y-6">
                 {plugin.manifest.capabilities.invocationCommands.map((cmd, idx) => {
                   const isEditing = editingCommands.hasOwnProperty(cmd.commandIdentifier);
                   return (
-                    <div key={idx} className="bg-gray-50 p-5 rounded-lg border border-gray-200">
-                      <h4 className="text-lg font-semibold text-gray-800 mb-2">{cmd.commandIdentifier}</h4>
-                      <p className="text-sm text-gray-500 mb-3">指令: {cmd.command}</p>
+                    <div key={idx} className={`p-5 rounded-lg border ${
+                      theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <h4 className={`text-lg font-semibold mb-2 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>{cmd.commandIdentifier}</h4>
+                      <p className={`text-sm mb-3 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-500'}`}>指令: {cmd.command}</p>
                       {isEditing ? (
                         <div className="space-y-3">
                           <textarea
@@ -743,7 +792,11 @@ export function Settings() {
                               [activePlugin]: { ...prev[activePlugin], [cmd.commandIdentifier]: e.target.value }
                             }))}
                             rows={4}
-                            className="w-full bg-white text-gray-900 p-3 rounded border border-gray-300 focus:border-blue-500 focus:outline-none resize-y"
+                            className={`w-full p-3 rounded border focus:outline-none resize-y ${
+                              theme === 'dark'
+                                ? 'bg-gray-900 text-gray-200 border-gray-700 focus:border-blue-500'
+                                : 'bg-white text-gray-900 border-gray-300 focus:border-blue-500'
+                            }`}
                           />
                           <div className="flex gap-2">
                             <button
@@ -768,7 +821,7 @@ export function Settings() {
                         </div>
                       ) : (
                         <div className="flex justify-between items-start">
-                          <p className="text-gray-600 flex-1 mr-4">{cmd.description}</p>
+                          <p className={`flex-1 mr-4 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{cmd.description}</p>
                           <button
                             onClick={() => setPluginEditingCommandDescriptions(prev => ({
                               ...prev,
@@ -794,14 +847,26 @@ export function Settings() {
   };
 
   return (
-    <div className={`settings-page settings-page-${theme} min-h-screen pt-[52px]`}>
+    <div className={`min-h-screen pt-[52px] ${
+      theme === 'dark' ? 'bg-gray-950 text-gray-200' : 'bg-slate-100 text-slate-700'
+    }`}>
       {/* Top bar */}
-      <header className="fixed top-0 left-0 right-0 z-50 h-[52px] bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
+      <header className={`fixed top-0 left-0 right-0 z-50 h-[52px] backdrop-blur-md border-b shadow-sm ${
+        theme === 'dark'
+          ? 'bg-gray-800/80 border-gray-700'
+          : 'bg-white/80 border-slate-200'
+      }`}>
         <div className="h-full max-w-[1600px] mx-auto px-5 flex justify-between items-center">
-          <span className="text-xl font-semibold text-blue-600">MeetWith</span>
+          <span className={`text-xl font-semibold ${
+            theme === 'dark' ? 'text-blue-400' : 'text-blue-500'
+          }`}>MeetWith</span>
           <button
             onClick={restartServer}
-            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-semibold"
+            className={`px-4 py-2 rounded-lg transition-colors text-sm font-semibold ${
+              theme === 'dark'
+                ? 'bg-red-400 text-white hover:bg-red-500'
+                : 'bg-red-500 text-white hover:bg-red-600'
+            }`}
           >
             重启服务器
           </button>
@@ -819,10 +884,16 @@ export function Settings() {
       )}
 
       {/* Main container */}
-      <div className="flex max-w-[1600px] mx-auto my-5 bg-white rounded-xl shadow-md overflow-hidden min-h-[calc(100vh-62px)]">
+      <div className={`flex max-w-[1600px] mx-auto my-5 rounded-xl shadow-md overflow-hidden min-h-[calc(100vh-62px)] ${
+        theme === 'dark' ? 'bg-gray-800' : 'bg-white'
+      }`}>
         {/* Sidebar */}
-        <aside className="w-[280px] flex-shrink-0 bg-gray-50 p-6 border-r border-gray-200 overflow-y-auto max-h-[calc(100vh-62px)]">
-          <h1 className="text-2xl font-bold text-blue-600 text-center mb-8 tracking-wide">配置中心</h1>
+        <aside className={`w-[280px] flex-shrink-0 p-6 border-r overflow-y-auto max-h-[calc(100vh-62px)] ${
+          theme === 'dark' ? 'bg-gray-800 border-r-gray-700' : 'bg-slate-100 border-r-slate-200'
+        }`}>
+          <h1 className={`text-2xl font-bold text-center mb-8 tracking-wide ${
+            theme === 'dark' ? 'text-blue-400' : 'text-blue-500'
+          }`}>配置中心</h1>
           <nav>
             <ul className="space-y-2">
               <li>
@@ -830,8 +901,12 @@ export function Settings() {
                   onClick={() => { setActiveSection('base-config'); setActivePlugin(null); }}
                   className={`w-full text-left px-5 py-3 rounded-lg transition-all duration-200 font-medium ${
                     activeSection === 'base-config' && !activePlugin
-                      ? 'bg-blue-100 text-blue-700 shadow-md border-l-4 border-blue-600'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      ? (theme === 'dark'
+                          ? 'bg-gray-700 text-blue-400 shadow-md border-l-4 border-l-blue-400'
+                          : 'bg-slate-200 text-blue-500 shadow-md border-l-4 border-l-blue-500')
+                      : (theme === 'dark'
+                          ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                          : 'text-slate-600 hover:bg-slate-200 hover:text-slate-700')
                   }`}
                 >
                   全局基础配置
@@ -842,8 +917,12 @@ export function Settings() {
                   onClick={() => { setActiveSection('daily-notes-manager'); setActivePlugin(null); }}
                   className={`w-full text-left px-5 py-3 rounded-lg transition-all duration-200 font-medium ${
                     activeSection === 'daily-notes-manager'
-                      ? 'bg-blue-100 text-blue-700 shadow-md border-l-4 border-blue-600'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      ? (theme === 'dark'
+                          ? 'bg-gray-700 text-blue-400 shadow-md border-l-4 border-l-blue-400'
+                          : 'bg-slate-200 text-blue-500 shadow-md border-l-4 border-l-blue-500')
+                      : (theme === 'dark'
+                          ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                          : 'text-slate-600 hover:bg-slate-200 hover:text-slate-700')
                   }`}
                 >
                   日记管理
@@ -855,8 +934,12 @@ export function Settings() {
                     onClick={() => { setActiveSection(plugin.name); setActivePlugin(plugin.name); }}
                     className={`w-full text-left px-5 py-3 rounded-lg transition-all duration-200 font-medium ${
                       activePlugin === plugin.name
-                        ? 'bg-blue-100 text-blue-700 shadow-md border-l-4 border-blue-600'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                        ? (theme === 'dark'
+                            ? 'bg-gray-700 text-blue-400 shadow-md border-l-4 border-l-blue-400'
+                            : 'bg-slate-200 text-blue-500 shadow-md border-l-4 border-l-blue-500')
+                        : (theme === 'dark'
+                            ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                            : 'text-slate-600 hover:bg-slate-200 hover:text-slate-700')
                     }`}
                   >
                     {plugin.manifest.displayName || plugin.name}
@@ -868,7 +951,11 @@ export function Settings() {
 
           {/* Back button */}
           <Link to="/" className="mt-6 block">
-            <button className="settings-back-button w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors">
+            <button className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              theme === 'dark'
+                ? 'bg-gray-700 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                : 'bg-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-700'
+            }`}>
               <ChevronLeft className="w-4 h-4" />
               返回聊天
             </button>
@@ -876,7 +963,9 @@ export function Settings() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 p-10 overflow-y-auto max-h-[calc(100vh-62px)]">
+        <main className={`flex-1 p-10 overflow-y-auto max-h-[calc(100vh-62px)] ${
+          theme === 'dark' ? 'bg-gray-950' : 'bg-slate-100'
+        }`}>
           {renderMainContent()}
         </main>
       </div>

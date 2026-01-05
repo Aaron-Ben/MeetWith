@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface ResizableSplitterProps {
   direction: 'horizontal' | 'vertical';
@@ -6,6 +7,7 @@ interface ResizableSplitterProps {
 }
 
 export default function ResizableSplitter({ direction, onDrag }: ResizableSplitterProps) {
+  const { theme } = useTheme();
   const [isDragging, setIsDragging] = useState(false);
   const startPos = useRef(0);
 
@@ -45,7 +47,9 @@ export default function ResizableSplitter({ direction, onDrag }: ResizableSplitt
 
   return (
     <div
-      className={`resizer ${isDragging ? 'dragging' : ''}`}
+      className={`bg-gray-700 w-1.25 cursor-col-resize flex-shrink-0 z-[100] opacity-50 transition-opacity hover:bg-blue-600/75 hover:opacity-100 ${
+        theme === 'dark' ? '' : 'bg-slate-200 hover:bg-blue-500/70'
+      }`}
       onMouseDown={handleMouseDown}
     />
   );
