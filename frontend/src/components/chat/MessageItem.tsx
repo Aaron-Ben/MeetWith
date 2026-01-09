@@ -44,9 +44,13 @@ export default function MessageItem({ message }: MessageItemProps) {
           </span>
           <div className="color-inherit">
             <div className="m-0 mb-2">
-              {message.content.split('\n').map((line, i) => (
-                <p key={i} className="m-0 mb-2 last:mb-0">{line}</p>
-              ))}
+              {message.content ? (
+                message.content.split('\n').map((line, i) => (
+                  <p key={i} className="m-0 mb-2 last:mb-0">{line}</p>
+                ))
+              ) : (
+                <p className="m-0 mb-2 last:mb-0 opacity-50">正在输入...</p>
+              )}
             </div>
           </div>
 

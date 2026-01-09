@@ -1,16 +1,63 @@
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@/contexts/ChatContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useChatStream } from '@/hooks/useChatStream';
+import { ChatMessage } from '@/api/chat';
 import MessageList from './MessageList';
 import AttachmentPreview from './AttachmentPreview';
 
 export default function ChatArea() {
   const { theme, toggleTheme } = useTheme();
-  const { currentAgent, messages, addMessage, clearMessages, showNotificationSidebar, toggleNotificationSidebar } = useChat();
+  const {
+    currentAgent,
+    messages,
+    addMessage,
+    updateMessage,
+    clearMessages,
+    showNotificationSidebar,
+    toggleNotificationSidebar
+  } = useChat();
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<Array<{ id: string; name: string; url: string; type: string }>>([]);
+  const [assistantMessageId, setAssistantMessageId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const accumulatedContentRef = useRef<string>('');
+  const assistantMessageIdRef = useRef<string | null>(null);
+
+  // 使用流式聊天 hook
+  const { sendMessage, isLoading } = useChatStream({
+    onChunk: (chunk: string) => {
+      const currentAssistantId = assistantMessageIdRef.current;
+      console.log('[ChatArea] onChunk called:', chunk, 'assistantMessageId:', currentAssistantId);
+      if (currentAssistantId) {
+        accumulatedContentRef.current += chunk;
+        const newContent = accumulatedContentRef.current;
+        console.log('[ChatArea] Updating message', currentAssistantId, 'with content length:', newContent.length);
+        updateMessage(currentAssistantId, newContent);
+      }
+    },
+    onComplete: (fullContent: string) => {
+      const currentAssistantId = assistantMessageIdRef.current;
+      console.log('[ChatArea] onComplete called with content length:', fullContent.length);
+      if (currentAssistantId) {
+        updateMessage(currentAssistantId, fullContent);
+        accumulatedContentRef.current = '';
+        assistantMessageIdRef.current = null;
+      }
+      setAssistantMessageId(null);
+    },
+    onError: (error: Error) => {
+      const currentAssistantId = assistantMessageIdRef.current;
+      console.error('[ChatArea] Chat error:', error);
+      if (currentAssistantId) {
+        updateMessage(currentAssistantId, `错误: ${error.message}`);
+        accumulatedContentRef.current = '';
+        assistantMessageIdRef.current = null;
+      }
+      setAssistantMessageId(null);
+    },
+  });
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -33,10 +80,13 @@ export default function ChatArea() {
     }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputText.trim() && attachments.length === 0) return;
+    if (!currentAgent) return;
+    if (isLoading) return; // 防止重复发送
 
-    const newMessage = {
+    // 添加用户消息
+    const userMessage = {
       id: `msg_${Date.now()}`,
       role: 'user' as const,
       content: inputText,
@@ -44,11 +94,35 @@ export default function ChatArea() {
       attachments: attachments.length > 0 ? attachments : undefined,
     };
 
-    addMessage(newMessage);
+    addMessage(userMessage);
+    const userInput = inputText;
     setInputText('');
     setAttachments([]);
 
-    // TODO: Send to API and get response
+    // 创建助手消息占位符
+    const assistantId = `msg_${Date.now() + 1}`;
+    setAssistantMessageId(assistantId);
+    assistantMessageIdRef.current = assistantId; // 同步更新 ref
+    accumulatedContentRef.current = ''; // 重置累积内容
+    addMessage({
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+    });
+
+    // 构建消息历史
+    const chatMessages: ChatMessage[] = [
+      { role: 'system', content: currentAgent.systemPrompt },
+      ...messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      { role: 'user', content: userInput },
+    ];
+
+    // 发送消息
+    await sendMessage(chatMessages, currentAgent.model);
   };
 
   const handleClearChat = () => {
@@ -137,17 +211,35 @@ export default function ChatArea() {
         />
         <button
           onClick={handleSend}
-          title="发送消息 (Ctrl+Enter)"
-          disabled={!currentAgent || (!inputText.trim() && attachments.length === 0)}
+          title={isLoading ? "AI 正在回复..." : "发送消息 (Ctrl+Enter)"}
+          disabled={!currentAgent || (!inputText.trim() && attachments.length === 0) || isLoading}
           className={`w-10 h-10 rounded-full flex justify-center items-center cursor-pointer transition-colors p-0 ml-2 ${
             theme === 'dark'
               ? 'bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed'
               : 'bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed'
           }`}
         >
-          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" className={theme === 'light' ? 'text-white' : ''}>
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-          </svg>
+          {isLoading ? (
+            <svg className="animate-spin" viewBox="0 0 24 24" fill="none" width="20" height="20">
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" className={theme === 'light' ? 'text-white' : ''}>
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+          )}
         </button>
         <button
           title="发送文件"

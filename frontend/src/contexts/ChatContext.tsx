@@ -86,7 +86,7 @@ const convertApiAgentToAgent = (apiAgent: ApiAgent): Agent => ({
   name: apiAgent.name,
   avatarUrl: apiAgent.avatarUrl || `/avatars/${apiAgent.id}.png`, // 优先使用后端返回的头像路径
   systemPrompt: apiAgent.systemPrompt || '',
-  model: 'gpt-4', // 默认模型
+  model: 'qwen-plus', // 默认模型（通义千问）
   temperature: 0.7,
   maxTokens: 4000,
 });
