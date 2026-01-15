@@ -619,6 +619,338 @@ class PluginManager:
 
         print("[PluginManager] All plugin shutdown processes initiated.")
 
+    # ==================== MCP Code Generation ====================
+
+    def validate_tool_schema(self, plugin_name: str) -> dict:
+        """
+        Validate that plugin has sufficient schema info for code generation.
+
+        Returns:
+            Dict with validation results:
+            {
+                'valid': bool,
+                'errors': List[str],
+                'warnings': List[str]
+            }
+        """
+        plugin = self.plugins.get(plugin_name)
+        if not plugin:
+            return {'valid': False, 'errors': [f'Plugin {plugin_name} not found'], 'warnings': []}
+
+        errors = []
+        warnings = []
+
+        # Check for invocation commands
+        commands = plugin.get('capabilities', {}).get('invocationCommands', [])
+        if not commands:
+            errors.append('No invocationCommands defined')
+
+        # Check configSchema exists
+        if 'configSchema' not in plugin:
+            warnings.append('No configSchema - parameters will be untyped')
+
+        # Validate each command has description
+        for cmd in commands:
+            if not cmd.get('description'):
+                warnings.append(f"Command {cmd.get('commandIdentifier')} missing description")
+
+        return {
+            'valid': len(errors) == 0,
+            'errors': errors,
+            'warnings': warnings
+        }
+
+    def generate_tool_code(
+        self,
+        plugin_name: str,
+        output_dir: Optional[Path] = None,
+        overwrite: bool = False
+    ) -> List[str]:
+        """
+        Generate Python wrapper code for a plugin.
+
+        Args:
+            plugin_name: Name of plugin to generate code for
+            output_dir: Directory to write generated files (default: backend/tools/)
+            overwrite: Whether to overwrite existing files
+
+        Returns:
+            List of generated file paths
+        """
+        plugin = self.plugins.get(plugin_name)
+        if not plugin:
+            raise ValueError(f"Plugin '{plugin_name}' not found")
+
+        if plugin.get('pluginType') != 'synchronous':
+            raise ValueError(f"Plugin '{plugin_name}' is not a synchronous plugin")
+
+        # Default output directory
+        if output_dir is None:
+            output_dir = Path(__file__).parent / 'tools'
+
+        generated_files = []
+
+        # Get invocation commands
+        commands = plugin.get('capabilities', {}).get('invocationCommands', [])
+
+        for cmd in commands:
+            command_identifier = cmd.get('commandIdentifier', plugin_name)
+
+            # Convert to snake_case for function name
+            function_name = self._to_snake_case(command_identifier)
+
+            # Create plugin directory
+            plugin_dir = output_dir / plugin_name.lower()
+            plugin_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create __init__.py if it doesn't exist
+            init_file = plugin_dir / '__init__.py'
+            if not init_file.exists():
+                init_file.write_text(f'"""Tools for {plugin_name} plugin"""\n')
+
+            # Generate function file
+            function_file = plugin_dir / f'{function_name}.py'
+
+            if function_file.exists() and not overwrite:
+                print(f"[PluginManager] File {function_file} already exists, skipping")
+                continue
+
+            # Generate code
+            code = self._generate_function_code(
+                plugin_name=plugin_name,
+                command=cmd,
+                function_name=function_name
+            )
+
+            # Write file
+            function_file.write_text(code, encoding='utf-8')
+            generated_files.append(str(function_file))
+            print(f"[PluginManager] Generated: {function_file}")
+
+        return generated_files
+
+    def _to_snake_case(self, name: str) -> str:
+        """Convert PascalCase or camelCase to snake_case."""
+        # Insert underscores before capital letters (except first)
+        s1 = re.sub(r'(?<!^)(?=[A-Z])', '_', name)
+        return s1.lower()
+
+    def _generate_function_code(
+        self,
+        plugin_name: str,
+        command: dict,
+        function_name: str
+    ) -> str:
+        """Generate Python function code for a command."""
+
+        # Get raw description for parameter parsing
+        raw_description = command.get('description', '')
+
+        # Parse parameters from description BEFORE cleaning
+        params = self._parse_parameters_from_description(raw_description)
+
+        # Clean up description for display - remove VCP protocol markers and format instructions
+        description = raw_description
+
+        # Remove VCP protocol blocks
+        description = re.sub(r'<<<\[TOOL_REQUEST\]>>>.*?<<<\[END_TOOL_REQUEST\]>>>', '', description, flags=re.DOTALL)
+
+        # Remove markdown code blocks
+        description = re.sub(r'```[a-zA-Z]*\n?', '', description)
+
+        # Remove VCP format instructions (for code execution approach, these are redundant)
+        vcp_phrases = [
+            r'请在您的回复中，使用以下精确格式来请求[^\n]*',
+            r'确保所有参数值都用「始」和「末」准确包裹',
+            r'请在回复的末尾使用以下格式发出请求[^\n]*',
+            r'要使用.*?，请在回复的末尾使用以下格式发出请求',
+            r'请在您的回复中，使用以下精确格式[^\n]*',
+        ]
+        for phrase in vcp_phrases:
+            description = re.sub(phrase, '', description)
+
+        # Clean up empty lines and whitespace
+        description = re.sub(r'\n\s*\n\s*\n', '\n\n', description)
+        description = description.strip()
+
+        # Extract example if present, but use simple comment instead
+        # to avoid syntax errors with special characters
+        example_comment = "# See plugin manifest for usage examples and VCP format"
+
+        # Build function signature
+        param_strs = []
+        for param_name, param_info in params.items():
+            if param_info.get('required', True):
+                param_strs.append(f"{param_name}: str")
+            else:
+                default_val = param_info.get('default', 'None')
+                # Don't quote None or numeric values
+                if default_val == 'None' or default_val is None:
+                    param_strs.append(f"{param_name}: str = None")
+                elif default_val.isdigit():
+                    param_strs.append(f"{param_name}: str = {default_val}")
+                else:
+                    param_strs.append(f"{param_name}: str = '{default_val}'")
+
+        signature = ", ".join(param_strs) if param_strs else ""
+
+        # Generate code
+        code = f'''"""
+Auto-generated from plugin: {plugin_name}
+Command: {command.get('commandIdentifier', function_name)}
+Do not edit manually - regenerate with PluginManager.generate_tool_code()
+"""
+
+from typing import Dict, Any
+from ..client import call_mcp_tool
+
+
+async def {function_name}({signature}) -> Dict[str, Any]:
+    """
+{description}
+"""
+
+    {example_comment}
+
+    # Build input parameters
+    input_data = {{
+{self._build_param_dict_code(params)}
+    }}
+
+    # Call the underlying plugin via MCP client
+    return await call_mcp_tool(
+        tool_name='{plugin_name}',
+        input_data=input_data
+    )
+'''
+        return code
+
+    def _parse_parameters_from_description(self, description: str) -> Dict[str, Dict]:
+        """
+        Parse parameters from the description text.
+
+        Looks for patterns like:
+        - param_name:「始」description「末」
+        - (required) param_name
+        - (optional, default: value) param_name
+        """
+        params = {}
+
+        # Pattern 1: param_name:「始」description「末」
+        # Handle both 「末」 and 「末」, with optional comma
+        pattern1 = r'(\w+):\s*「始」(.*?)「末」'
+        for match in re.finditer(pattern1, description):
+            param_name = match.group(1)
+            param_desc = match.group(2).strip()
+
+            # Skip VCP protocol fields
+            if param_name == 'tool_name':
+                continue
+
+            # Check if required or optional
+            is_required = '(可选' not in param_desc and '(optional' not in param_desc.lower()
+
+            # Extract default value if present
+            default_value = None
+            if not is_required:
+                # Look for default value in patterns like "默认为 'general'" or "default: 5"
+                # Pattern matches: 默认为 'value' or 默认为 value
+                default_match = re.search(r'默认为\s*[\'\"]?([^\s\'\"\)]+)[\'\"]?', param_desc)
+                if default_match:
+                    default_value = default_match.group(1)
+                else:
+                    # Try English pattern
+                    default_match = re.search(r'default:\s*[\'\"]?([^\s\'\"\)]+)[\'\"]?', param_desc)
+                    if default_match:
+                        default_value = default_match.group(1)
+
+            params[param_name] = {
+                'description': param_desc,
+                'required': is_required,
+                'default': default_value
+            }
+
+        # Common parameters for different plugin types
+        # (fallback if pattern matching didn't work)
+        if 'query' in description.lower() or 'search' in description.lower():
+            params.setdefault('query', {'description': 'Search query', 'required': True, 'default': None})
+
+        if 'max_results' in description.lower():
+            params.setdefault('max_results', {'description': 'Maximum results', 'required': False, 'default': '5'})
+
+        if 'topic' in description.lower():
+            params.setdefault('topic', {'description': 'Search topic', 'required': False, 'default': 'general'})
+
+        if 'expression' in description.lower() or 'calculate' in description.lower():
+            params.setdefault('expression', {'description': 'Mathematical expression', 'required': True, 'default': None})
+
+        return params
+
+    def _build_param_dict_code(self, params: Dict[str, Dict]) -> str:
+        """Build the input_data dictionary initialization code."""
+        if not params:
+            return "        # No parameters"
+
+        lines = []
+        for param_name, param_info in params.items():
+            lines.append(f"        '{param_name}': {param_name}")
+
+        return ",\n".join(lines)
+
+    def _indent_lines(self, text: str, indent: int) -> str:
+        """Indent all lines in text by the specified number of spaces."""
+        if not text:
+            return "    # No example provided"
+
+        spaces = " " * indent
+        return "\n".join(spaces + line for line in text.split("\n"))
+
+    async def generate_all_tool_code(
+        self,
+        output_dir: Optional[Path] = None,
+        overwrite: bool = False,
+        skip_invalid: bool = True
+    ) -> dict:
+        """
+        Generate tool code for all synchronous plugins.
+
+        Returns:
+            Dict with generation results:
+            {
+                'generated': List[str],  # Successfully generated plugin names
+                'failed': Dict[str, str],  # Failed plugin -> error message
+                'skipped': List[str],  # Skipped plugin names
+                'total_files': int  # Total number of files generated
+            }
+        """
+        results = {
+            'generated': [],
+            'failed': {},
+            'skipped': [],
+            'total_files': 0
+        }
+
+        for plugin_name, plugin in self.plugins.items():
+            # Skip non-synchronous plugins
+            if plugin.get('pluginType') != 'synchronous':
+                results['skipped'].append(plugin_name)
+                continue
+
+            # Validate schema
+            validation = self.validate_tool_schema(plugin_name)
+            if not validation['valid'] and not skip_invalid:
+                results['failed'][plugin_name] = '; '.join(validation['errors'])
+                continue
+
+            try:
+                files = self.generate_tool_code(plugin_name, output_dir, overwrite)
+                results['generated'].append(plugin_name)
+                results['total_files'] += len(files)
+            except Exception as e:
+                results['failed'][plugin_name] = str(e)
+
+        return results
+
 
 # 全局单例
 plugin_manager = PluginManager()

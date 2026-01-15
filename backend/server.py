@@ -20,6 +20,7 @@ from pytz import timezone
 from dotenv import load_dotenv
 
 from plugin_manager import plugin_manager
+from code_executor import execute_ai_code, CodeExecutionError
 
 config_path = Path(__file__).parent / 'config.env'
 load_dotenv(config_path)
@@ -111,6 +112,148 @@ def get_current_time(format_str: str = '%Y年%m月%d日', tz: str = 'Asia/Shangh
     return now.strftime(format_str)
 
 
+# ==================== MCP Tools API Prompt ====================
+
+USE_MCP_CODE_EXECUTION = os.getenv('USE_MCP_CODE_EXECUTION', 'false').lower() == 'true'
+
+
+async def _generate_tools_api_prompt() -> str:
+    """
+    Generate the tools API prompt for system instructions.
+
+    This provides a hybrid approach: AI can choose between
+    1. Writing Python code to process data and call tools
+    2. Direct tool calls using VCP format (for simple tasks)
+    """
+    # Check if MCP mode is enabled
+    if not USE_MCP_CODE_EXECUTION:
+        return ""
+
+    # Count available tools
+    tools_dir = Path(__file__).parent / 'tools'
+    tool_count = 0
+    tool_categories = []
+
+    if tools_dir.exists():
+        for plugin_dir in tools_dir.iterdir():
+            if plugin_dir.is_dir() and not plugin_dir.name.startswith('_'):
+                func_files = list(plugin_dir.glob('*.py'))
+                func_files = [f for f in func_files if not f.name.startswith('_')]
+                if func_files:
+                    tool_count += len(func_files)
+                    tool_categories.append((plugin_dir.name, len(func_files)))
+
+    # Generate hybrid prompt
+    prompt = f"""
+## Available Tools ({tool_count} total)
+
+You have **TWO ways** to use tools:
+
+### Option 1: Write Python Code (Recommended for complex tasks) 💡
+
+Write Python code to process data and call tools. This is **more efficient** because:
+- Process intermediate results in code (not in model context)
+- Use loops, conditionals, filtering
+- Save tokens by only outputting what user needs
+
+```python
+from tools.tavilysearch import tavily_search
+from tools.scicalculator import scicalculator
+
+# Example: Process weather data
+weather = await tavily_search(query="武汉天气")
+result = await scicalculator(expression="5 * 10")
+print(f"结果: {{result}}")
+```
+
+**When to use code execution:**
+- Processing large datasets (filter, aggregate)
+- Multiple tool calls with data flow between them
+- Complex logic (loops, conditionals)
+- When you want to minimize token usage
+
+### Option 2: Direct Tool Call (Simple tasks)
+
+Use VCP format for simple, single tool calls:
+
+```
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」ToolName「末」,
+param:「始」value「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+**When to use direct calls:**
+- Single, simple tool call
+- Quick lookup
+- When code execution feels like overkill
+
+### Tool Discovery
+
+```python
+# List all available tools
+from tools.search_tools import list_available_tools
+tools = list_available_tools()
+
+# Search for relevant tools
+from tools.search_tools import search_tools
+results = search_tools("search web", limit=5)
+
+# Get info about a specific tool
+from tools.tavilysearch import tavily_search
+help(tavily_search)
+```
+
+### Tool Categories
+
+"""
+
+    # Add categories based on plugin directories
+    for plugin_name, count in sorted(tool_categories):
+        prompt += f"- **{plugin_name}**: {count} function(s)\n"
+
+    prompt += """
+### Important Notes
+
+1. All tool functions are async - use `await` when calling them
+2. Code execution results are automatically included in your next response
+3. Choose code execution when it helps reduce token usage or handle complex logic
+4. For simple tasks, direct VCP tool calls work fine
+
+### How It Works
+
+When you write Python code:
+```python
+# Your code is executed
+result = await some_tool(param="value")
+print(f"Got: {{result}}")
+# The output is captured and sent back to you
+```
+
+When you use VCP format:
+```
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」ToolName「末」
+<<<[END_TOOL_REQUEST]>>>
+# The system detects this, executes the tool, and returns results
+```
+
+Both approaches work - choose based on the task complexity!
+"""
+
+    return prompt
+
+
+def _get_mcp_tool_reference(plugin_name: str) -> str:
+    """
+    Generate minimal tool reference for MCP mode.
+
+    Instead of full description, just mention the tool exists and how to import it.
+    """
+    plugin_name_lower = plugin_name.lower()
+    return f"# Tool available: {plugin_name}\n# Import: from tools.{plugin_name_lower} import *"
+
+
 # ==================== 变量替换系统 ====================
 
 async def replace_common_variables(text: Any) -> Any:
@@ -166,10 +309,23 @@ async def replace_common_variables(text: Any) -> Any:
     weather_info = plugin_manager.get_placeholder_value("{{VCPWeatherInfo}}")
     processed_text = processed_text.replace('{{VCPWeatherInfo}}', weather_info)
 
+    # MCP: {{VCPToolsAPI}} placeholder - Tools API prompt
+    if '{{VCPToolsAPI}}' in processed_text:
+        tools_api_prompt = await _generate_tools_api_prompt()
+        processed_text = processed_text.replace('{{VCPToolsAPI}}', tools_api_prompt)
+
     # 单个插件描述
+    # In MCP mode, use minimal references; otherwise use full descriptions
     individual_descriptions = plugin_manager.get_individual_plugin_descriptions()
     for placeholder_key, description in individual_descriptions.items():
-        processed_text = processed_text.replace(f'{{{{{placeholder_key}}}}}', description)
+        if USE_MCP_CODE_EXECUTION:
+            # Extract plugin name from placeholder (format: VCPPluginName)
+            plugin_name = placeholder_key[3:]  # Remove 'VCP' prefix
+            mcp_reference = _get_mcp_tool_reference(plugin_name)
+            processed_text = processed_text.replace(f'{{{{{placeholder_key}}}}}', mcp_reference)
+        else:
+            # Use full VCP description (backward compatibility)
+            processed_text = processed_text.replace(f'{{{{{placeholder_key}}}}}', description)
 
     # Port
     if os.getenv('PORT'):
@@ -363,6 +519,103 @@ def parse_multiple_vcp_requests(content: str) -> List[dict]:
         search_offset = end_idx + len(end_marker)
 
     return requests
+
+
+# ==================== Code Execution Detection ====================
+
+def extract_code_blocks(content: str) -> List[str]:
+    """
+    Extract Python code blocks from AI response.
+
+    Looks for:
+    ```python
+    code here
+    ```
+
+    Args:
+        content: AI response text
+
+    Returns:
+        List of extracted code blocks
+    """
+    pattern = r'```python\n(.*?)```'
+    return re.findall(pattern, content, re.DOTALL)
+
+
+def has_code_blocks(content: str) -> bool:
+    """
+    Check if content contains Python code blocks.
+
+    Args:
+        content: Text to check
+
+    Returns:
+        True if Python code blocks are found
+    """
+    return bool(extract_code_blocks(content))
+
+
+async def execute_code_blocks(content: str, timeout: float = 30.0) -> Dict[str, Any]:
+    """
+    Execute all Python code blocks found in content.
+
+    Args:
+        content: AI response text containing code blocks
+        timeout: Maximum execution time per code block
+
+    Returns:
+        {
+            'success': bool,
+            'outputs': List[str],  # Output from each code block
+            'errors': List[str],   # Errors from each code block
+            'combined_output': str  # All outputs combined
+        }
+    """
+    code_blocks = extract_code_blocks(content)
+
+    if not code_blocks:
+        return {
+            'success': True,
+            'outputs': [],
+            'errors': [],
+            'combined_output': ''
+        }
+
+    outputs = []
+    errors = []
+    all_outputs = []
+
+    for i, code in enumerate(code_blocks):
+        logger.info(f"[CodeExecution] Executing code block {i + 1}/{len(code_blocks)}")
+
+        try:
+            result = await execute_ai_code(code, timeout=timeout)
+
+            if result['success']:
+                output = result['output']
+                outputs.append(output)
+                all_outputs.append(output)
+
+                if result['error']:
+                    errors.append(result['error'])
+                    logger.warning(f"[CodeExecution] Code block {i + 1} had stderr: {result['error']}")
+            else:
+                error_msg = result['error']
+                errors.append(error_msg)
+                logger.error(f"[CodeExecution] Code block {i + 1} failed: {error_msg}")
+
+        except CodeExecutionError as e:
+            errors.append(str(e))
+            logger.error(f"[CodeExecution] Code block {i + 1} error: {e}")
+
+    combined_output = '\n'.join(all_outputs)
+
+    return {
+        'success': len(errors) == 0,
+        'outputs': outputs,
+        'errors': errors,
+        'combined_output': combined_output
+    }
 
 
 # ==================== 日记系统 ====================
@@ -738,7 +991,82 @@ async def handle_streaming_response(ai_response: httpx.Response, original_body: 
 
         logger.info(f'[PluginCall] AI First Full Response Text: {sse_content[:200]}...')
 
-        # 检查是否有工具调用
+        # 优先检查是否有代码块（新的MCP方式）
+        has_code = has_code_blocks(sse_content)
+
+        if has_code:
+            # 执行代码块
+            yield 'data: [CODE_EXECUTION]\n\n'
+            logger.info('[CodeExecution] Found Python code blocks, executing...')
+
+            try:
+                code_result = await execute_code_blocks(sse_content, timeout=30.0)
+
+                if code_result['success']:
+                    code_output = code_result['combined_output']
+                    logger.info(f'[CodeExecution] Execution successful, output: {code_output[:200]}...')
+
+                    # 准备第二次调用的消息
+                    messages_for_next_call = original_body.get('messages', []).copy()
+                    messages_for_next_call.append({'role': 'assistant', 'content': sse_content})
+
+                    # 添加代码执行结果
+                    if code_output:
+                        result_message = f"代码执行结果:\n{code_output}"
+                    else:
+                        result_message = "代码执行完成，但没有输出。"
+
+                    messages_for_next_call.append({'role': 'user', 'content': result_message})
+
+                    # 第二次 AI 调用
+                    logger.info('[CodeExecution] Proceeding with second AI call after code execution')
+                    await write_debug_log('LogOutputWithCodeExecution_BeforeSecondCall', {
+                        'messages': messages_for_next_call,
+                        'originalRequestBody': original_body
+                    })
+
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        second_response = await client.post(
+                            f"{API_URL}/v1/chat/completions",
+                            headers={
+                                "Content-Type": "application/json",
+                                "Authorization": f"Bearer {API_KEY}",
+                                "User-Agent": request.headers.get("user-agent", "VCPToolBox/1.0"),
+                                "Accept": "text/event-stream",
+                            },
+                            json={**original_body, 'messages': messages_for_next_call}
+                        )
+
+                    # 流式转发第二次 AI 响应
+                    second_full_text = ''
+                    async for chunk in second_response.aiter_bytes():
+                        chunk_str = chunk.decode('utf-8', errors='ignore')
+                        second_full_text += chunk_str
+                        yield chunk_str
+
+                    yield 'data: [DONE]\n\n'
+
+                    # 处理日记
+                    await handle_diary_from_ai_response(second_full_text)
+
+                else:
+                    # 代码执行失败
+                    error_msg = code_result['errors'][0] if code_result['errors'] else "Unknown error"
+                    logger.error(f'[CodeExecution] Execution failed: {error_msg}')
+
+                    yield f"data: {{'error': 'Code execution failed: {error_msg}'}}\n\n"
+                    yield 'data: [DONE]\n\n'
+                    await handle_diary_from_ai_response(full_content)
+
+            except Exception as e:
+                logger.error(f'[CodeExecution] Error during code execution: {e}')
+                import traceback
+                traceback.print_exc()
+                yield f"data: {{'error': '{str(e)}'}}\n\n"
+                yield 'data: [DONE]\n\n'
+                await handle_diary_from_ai_response(full_content)
+
+        # 检查是否有工具调用（VCP方式，向后兼容）
         vcp_request = parse_vcp_request(sse_content)
         needs_second_ai_call = vcp_request is not None
 
@@ -833,7 +1161,50 @@ async def handle_non_streaming_response(
     except json.JSONDecodeError:
         full_content_from_ai = response_text
 
-    # 检查是否有工具调用
+    # 优先检查是否有代码块（新的MCP方式）
+    if has_code_blocks(full_content_from_ai):
+        logger.info('[CodeExecution] Found Python code blocks in non-streaming response')
+        code_result = await execute_code_blocks(full_content_from_ai, timeout=30.0)
+
+        if code_result['success']:
+            code_output = code_result['combined_output']
+            logger.info(f'[CodeExecution] Execution successful')
+
+            # 构建包含代码执行结果的响应
+            try:
+                response_json = json.loads(response_text)
+                # 更新响应内容，添加代码执行结果
+                response_json['choices'][0]['message']['content'] = (
+                    full_content_from_ai + "\n\n代码执行结果:\n" + code_output
+                )
+                response_json['choices'][0]['finish_reason'] = 'stop'
+
+                await handle_diary_from_ai_response(json.dumps(response_json))
+                return JSONResponse(content=response_json)
+
+            except json.JSONDecodeError:
+                # 如果无法解析为JSON，返回原始文本
+                new_response_text = response_text + "\n\n代码执行结果:\n" + code_output
+                await handle_diary_from_ai_response(new_response_text)
+                return Response(content=new_response_text, media_type="text/plain")
+        else:
+            # 代码执行失败
+            error_msg = code_result['errors'][0] if code_result['errors'] else "Unknown error"
+            logger.error(f'[CodeExecution] Execution failed: {error_msg}')
+
+            try:
+                response_json = json.loads(response_text)
+                response_json['choices'][0]['message']['content'] = (
+                    full_content_from_ai + f"\n\n代码执行失败: {error_msg}"
+                )
+                return JSONResponse(content=response_json)
+            except json.JSONDecodeError:
+                return Response(
+                    content=response_text + f"\n\n代码执行失败: {error_msg}",
+                    media_type="text/plain"
+                )
+
+    # 检查是否有工具调用（VCP方式，向后兼容）
     vcp_requests = parse_multiple_vcp_requests(full_content_from_ai)
 
     if not vcp_requests:

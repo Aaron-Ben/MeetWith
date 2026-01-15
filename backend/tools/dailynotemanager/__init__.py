@@ -1,0 +1,1 @@
+"""Tools for DailyNoteManager plugin"""
